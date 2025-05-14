@@ -1,0 +1,35 @@
+[
+  {
+    "id": "1",
+    "persona_id": "1",
+    "title": "Optimaliseer Python-algoritme voor snelheid",
+    "content": "Je bent een Senior Python Developer. Geef 3 manieren om een algoritme te versnellen.",
+    "tags": [
+      "optimalisatie",
+      "performantie"
+    ],
+    "last_used": "2025-05-14"
+  },
+  {
+    "id": "2",
+    "persona_id": "2",
+    "title": "Genereer een productomschrijving voor 3D-printservice",
+    "content": "Je bent een 3D Print Engineer. Schrijf een productomschrijving voor een custom FDM-print.\nTest of dit werkt",
+    "tags": [
+      "copywriting",
+      "3d",
+      "marketing"
+    ],
+    "last_used": "2025-05-15"
+  },
+  {
+    "id": "54d7e1d6-3cee-49f6-be44-452275e177c0",
+    "persona_id": "3aa3579c-30d6-42f3-a61a-bae881fa2966",
+    "title": "prompt voor tester",
+    "content": "Dit is een testprompt voor de tester persona!",
+    "tags": [
+      "prommpttag"
+    ],
+    "last_used": "2025-05-15"
+  }
+]
