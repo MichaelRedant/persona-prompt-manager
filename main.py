@@ -1,8 +1,15 @@
+import sys
+import os
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 from ui.main_window import MainWindow
+
+icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets", "icon.ico"))
+
 
 if __name__ == "__main__":
     app = QApplication([])
+    app.setWindowIcon(QIcon(icon_path))
     app.setStyleSheet("""
     QWidget {
         font-family: 'Segoe UI', sans-serif;
@@ -55,7 +62,9 @@ if __name__ == "__main__":
     }
 """)
 
-
+    
     window = MainWindow()
+    app.setWindowIcon(QIcon("assets/icon.ico"))
+
     window.show()
     app.exec()

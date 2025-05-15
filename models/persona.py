@@ -9,6 +9,7 @@ class Persona:
     category: str
     description: str
     tags: List[str] = field(default_factory=list)
+    is_favorite: bool = False  # ← nieuw veld
 
     @staticmethod
     def from_dict(data):
@@ -17,7 +18,8 @@ class Persona:
             name=data["name"],
             category=data.get("category", ""),
             description=data.get("description", ""),
-            tags=data.get("tags", [])
+            tags=data.get("tags", []),
+            is_favorite=data.get("is_favorite", False)
         )
 
     def to_dict(self):
@@ -26,5 +28,6 @@ class Persona:
             "name": self.name,
             "category": self.category,
             "description": self.description,
-            "tags": self.tags
+            "tags": self.tags,
+            "is_favorite": self.is_favorite
         }

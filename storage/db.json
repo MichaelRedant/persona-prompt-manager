@@ -8,7 +8,8 @@
       "python",
       "api",
       "backend"
-    ]
+    ],
+    "is_favorite": false
   },
   {
     "id": "2",
@@ -19,15 +20,7 @@
       "3d",
       "engineering",
       "fusion360"
-    ]
-  },
-  {
-    "id": "3aa3579c-30d6-42f3-a61a-bae881fa2966",
-    "name": "Tester",
-    "category": "testerioo",
-    "description": "Dit is een test voor de beschrijving\t",
-    "tags": [
-      "testtag"
-    ]
+    ],
+    "is_favorite": false
   }
 ]
