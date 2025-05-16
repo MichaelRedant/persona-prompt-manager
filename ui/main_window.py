@@ -8,12 +8,15 @@ from PySide6.QtCore import Qt
 from models.persona import Persona
 from models.prompt import Prompt
 from ui.prompt_form import PromptForm
+from ui.persona_choice_dialog import PersonaChoiceDialog
 from ui.persona_form import PersonaForm
+
 import json
 import os
 
 from PySide6.QtWidgets import QGraphicsDropShadowEffect
 from PySide6.QtGui import QColor, QIcon
+
 
 
 icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets", "icon.ico"))
@@ -150,6 +153,11 @@ class MainWindow(QMainWindow):
         # 1. Zet size policies
         self.persona_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.prompt_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
+        # Aanmaakknop met keuze tussen blanco of sjabloon
+        self.add_persona_button = QPushButton("➕ Nieuwe Persona")
+        self.add_persona_button.clicked.connect(self.add_persona)
+
 
 # 2. Bovenliggende horizontale layout
         top_layout = QHBoxLayout()
@@ -307,31 +315,26 @@ class MainWindow(QMainWindow):
 
     def load_prompts(self):
         try:
-            # Dynamisch pad naar prompts.json, werkt ook in .exe
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             prompts_path = os.path.join(base_dir, "storage", "prompts.json")
 
-            # JSON inlezen
+            if not os.path.exists(prompts_path):
+                self.prompts = []
+                return
+
             with open(prompts_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            # Objecten aanmaken
-            self.prompts = [Prompt.from_dict(item) for item in data]
-
-        except FileNotFoundError:
-            QMessageBox.warning(self, "Bestand niet gevonden",
-                                "⚠️ Het bestand 'storage/prompts.json' werd niet gevonden.")
-            self.prompts = []
+                content = f.read().strip()
+                if not content:
+                    self.prompts = []
+                    return
+                data = json.loads(content)
+                self.prompts = [Prompt.from_dict(item) for item in data]
 
         except json.JSONDecodeError:
             QMessageBox.critical(self, "JSON-fout",
-                                "🚫 Fout bij het inlezen van 'prompts.json'. Controleer de opmaak.")
+                "🚫 Fout bij het inlezen van 'prompts.json'. Controleer de opmaak.")
             self.prompts = []
-
-        except Exception as e:
-            QMessageBox.critical(self, "Onverwachte fout",
-                                f"❌ Er is een fout opgetreden bij het laden van de prompts:\n{e}")
-            self.prompts = []
+            
 
     def display_persona_details(self, index):
         if index >= 0:
@@ -534,14 +537,24 @@ class MainWindow(QMainWindow):
             msg.exec()
 
     def add_persona(self):
-        dialog = PersonaForm(self)
-        if dialog.exec():
-            new_persona = dialog.get_persona()
+        dialog = PersonaChoiceDialog(self)
+        result = dialog.exec()
+
+        if result == 1:
+            persona_form = PersonaForm(self, persona=None, template_mode=False)
+        elif result == 2:
+            persona_form = PersonaForm(self, persona=None, template_mode=True)
+        else:
+            return  # geannuleerd
+
+        if persona_form.exec():
+            new_persona = persona_form.get_persona()
             self.personas.append(new_persona)
-            with open("storage/db.json", "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
+            self.save_personas()
             self.refresh_persona_list()
-            self.update_persona_title()
+
+
+
 
     def edit_persona(self):
         index = self.persona_list.currentRow()
@@ -766,7 +779,24 @@ class MainWindow(QMainWindow):
         count = len(self.filtered_personas) if hasattr(self, 'filtered_personas') else len(self.personas)
         self.persona_title_label.setText(f"📚 Persona's {count}")
             
-                
+    def add_blank_persona(self):
+        from ui.persona_form import PersonaForm
+        dialog = PersonaForm(self, persona=None, template_mode=False)
+        if dialog.exec():
+            new_persona = dialog.get_persona()
+            self.personas.append(new_persona)
+            self.save_personas()
+            self.refresh_persona_list()
+
+    def add_template_persona(self):
+        from ui.persona_form import PersonaForm
+        dialog = PersonaForm(self, persona=None, template_mode=True)
+        if dialog.exec():
+            new_persona = dialog.get_persona()
+            self.personas.append(new_persona)
+            self.save_personas()
+            self.refresh_persona_list()
+            
 
     def wrap_in_card(self, widget: QWidget, title: str = None) -> QFrame:
         frame = QFrame()
