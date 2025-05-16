@@ -39,11 +39,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowIcon(QIcon(icon_path))
-        self.setWindowTitle("Prompt Library Manager")
+        self.setWindowTitle("Persona Vault")
         self.setGeometry(100, 100, 1000, 600)
         self.is_dark_mode = False
         self.tray_icon = QSystemTrayIcon(QIcon("assets/icon.ico"), self)
-        self.tray_icon.setToolTip("Prompt Library Manager")
+        self.tray_icon.setToolTip("Persona Vault")
 
     # Menu
         tray_menu = QMenu()
@@ -70,7 +70,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction("Over").triggered.connect(self.show_about)
 
     # Titel
-        title_label = QLabel("🧠 Prompt Library Manager")
+        title_label = QLabel("🧠 Persona Vault")
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setStyleSheet("""
         font-size: 32px;
@@ -273,30 +273,74 @@ class MainWindow(QMainWindow):
 
 
     def load_personas(self):
-        with open("storage/db.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-        self.personas = [Persona.from_dict(item) for item in data]
+        try:
+            # Dynamisch pad naar JSON, werkt ook bij gebundelde .exe
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            db_path = os.path.join(base_dir, "storage", "db.json")
+
+            # JSON inlezen
+            with open(db_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Data laden in objecten
+            self.personas = [Persona.from_dict(item) for item in data]
+
+        except FileNotFoundError:
+            QMessageBox.warning(self, "Bestand niet gevonden",
+                                "⚠️ Het bestand 'storage/db.json' werd niet gevonden.")
+            self.personas = []
+
+        except json.JSONDecodeError:
+            QMessageBox.critical(self, "JSON-fout",
+                                "🚫 Fout bij het inlezen van 'db.json'. Controleer de opmaak.")
+            self.personas = []
+
+        except Exception as e:
+            QMessageBox.critical(self, "Onverwachte fout",
+                                f"❌ Er is een fout opgetreden bij het laden van de persona's:\n{e}")
+            self.personas = []
+
+        # UI bijwerken
         self.refresh_persona_list()
-        self.update_persona_title()  # 👈 nu is self.personas gedefinieerd
+        self.update_persona_title()
 
 
     def load_prompts(self):
         try:
-            with open("storage/prompts.json", "r", encoding="utf-8") as f:
+            # Dynamisch pad naar prompts.json, werkt ook in .exe
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+
+            # JSON inlezen
+            with open(prompts_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+
+            # Objecten aanmaken
             self.prompts = [Prompt.from_dict(item) for item in data]
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            print(f"⚠️ Fout bij laden prompts.json: {e}")
+
+        except FileNotFoundError:
+            QMessageBox.warning(self, "Bestand niet gevonden",
+                                "⚠️ Het bestand 'storage/prompts.json' werd niet gevonden.")
+            self.prompts = []
+
+        except json.JSONDecodeError:
+            QMessageBox.critical(self, "JSON-fout",
+                                "🚫 Fout bij het inlezen van 'prompts.json'. Controleer de opmaak.")
+            self.prompts = []
+
+        except Exception as e:
+            QMessageBox.critical(self, "Onverwachte fout",
+                                f"❌ Er is een fout opgetreden bij het laden van de prompts:\n{e}")
             self.prompts = []
 
     def display_persona_details(self, index):
         if index >= 0:
             persona = self.filtered_personas[index] if hasattr(self, 'filtered_personas') else self.personas[index]
             self.details_box.setPlainText(
-            f"🔹 Naam: {persona.name}\n"
+                f"🔹 Naam: {persona.name}\n"
                 f"🔹 Categorie: {persona.category}\n"
                 f"🔹 Tags: {', '.join(persona.tags)}\n\n"
-                f"{persona.description}"
+             f"{persona.description}"
             )
             self.edit_persona_button.show()
             self.delete_persona_button.show()
@@ -305,7 +349,7 @@ class MainWindow(QMainWindow):
             related_prompts = [p for p in self.prompts if p.persona_id == persona.id]
             for prompt in related_prompts:
                 item = QListWidgetItem(prompt.title)
-                item.setData(Qt.UserRole, prompt.id)
+                item.setData(Qt.UserRole, prompt.id)  # Belangrijk!
                 self.prompt_list.addItem(item)
 
             if self.prompt_list.count() > 0:
@@ -320,13 +364,9 @@ class MainWindow(QMainWindow):
             self.delete_prompt_button.hide()
             self.copy_prompt_button.hide()
 
-        # ❗ Toon opnieuw enkel de + knoppen
             self.add_persona_button.show()
             self.add_prompt_button.show()
-        # toon favorite button            
             self.favorite_button.show()
-
-
 
     def display_prompt_details(self, index):
         if index >= 0:
@@ -360,6 +400,7 @@ class MainWindow(QMainWindow):
             self.details_box.clear()
             self.prompt_metadata_label.clear()
 
+
     def refresh_persona_list(self):
         self.persona_list.clear()
         self.no_personas_label.setVisible(self.persona_list.count() == 0)
@@ -381,58 +422,99 @@ class MainWindow(QMainWindow):
 
 
     def add_prompt(self):
+    # Controleer of er een persona geselecteerd is
+        selected_persona = None
         persona_index = self.persona_list.currentRow()
-        if persona_index < 0:
-            return
-        persona = self.personas[persona_index]
-        dialog = PromptForm(persona.id, self)
+        if 0 <= persona_index < len(self.personas):
+            selected_persona = self.personas[persona_index]
+
+    # Toon dialoog met ALLE personas + optioneel een voorgeselecteerde
+        dialog = PromptForm(
+            self,
+            personas=self.personas,
+            preselected_persona=selected_persona
+        )
+
         if dialog.exec():
             new_prompt = dialog.get_prompt()
             self.prompts.append(new_prompt)
-            with open("storage/prompts.json", "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
-            self.display_persona_details(persona_index)
+
+        # Opslaan in prompts.json
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+
+        with open(prompts_path, "w", encoding="utf-8") as f:
+
+
+        # Indien een persona actief was: refresh promptlijst
+            if selected_persona:
+                self.display_persona_details(persona_index)
+
 
     def edit_prompt(self):
         persona_index = self.persona_list.currentRow()
         prompt_index = self.prompt_list.currentRow()
+
         if persona_index < 0 or prompt_index < 0:
+            QMessageBox.information(self, "Selectie vereist", "Selecteer een persona en een prompt om te bewerken.")
             return
-        item = self.prompt_list.item(prompt_index)
-        prompt_id = item.data(Qt.UserRole)
-        prompt = next((p for p in self.prompts if p.id == prompt_id), None)
-        if not prompt:
+
+        selected_persona = self.personas[persona_index]
+        persona_prompts = [p for p in self.prompts if p.persona_id == selected_persona.id]
+
+        if prompt_index >= len(persona_prompts):
+            QMessageBox.warning(self, "Ongeldige selectie", "Geselecteerde prompt is ongeldig.")
             return
-        dialog = PromptForm(prompt.persona_id, self, prompt)
+
+        selected_prompt = persona_prompts[prompt_index]
+
+        dialog = PromptForm(
+            self,
+            prompt=selected_prompt,
+            personas=self.personas,
+            preselected_persona=selected_persona
+        )
+
         if dialog.exec():
-            updated = dialog.get_prompt()
-            for i, p in enumerate(self.prompts):
-                if p.id == updated.id:
-                    self.prompts[i] = updated
-                    break
-            with open("storage/prompts.json", "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+
+        with open(prompts_path, "w", encoding="utf-8") as f:
+
             self.display_persona_details(persona_index)
-            self.prompt_list.setCurrentRow(prompt_index)
+
 
     def delete_prompt(self):
-        persona_index = self.persona_list.currentRow()
-        prompt_index = self.prompt_list.currentRow()
-        if persona_index < 0 or prompt_index < 0:
+        current_item = self.prompt_list.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "Selectie vereist", "Selecteer een prompt om te verwijderen.")
             return
-        item = self.prompt_list.item(prompt_index)
-        prompt_id = item.data(Qt.UserRole)
-        reply = QMessageBox.question(
-            self, "Bevestigen",
-            "Ben je zeker dat je deze prompt wilt verwijderen?",
-            QMessageBox.Yes | QMessageBox.No
+
+        prompt_id = current_item.data(Qt.UserRole)
+        selected_prompt = next((p for p in self.prompts if p.id == prompt_id), None)
+
+        if not selected_prompt:
+            QMessageBox.warning(self, "Niet gevonden", "Geselecteerde prompt kon niet worden gevonden.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Bevestig verwijderen",
+            f"Weet je zeker dat je deze prompt wil verwijderen?\n\n{selected_prompt.title}"
         )
-        if reply == QMessageBox.Yes:
-            self.prompts = [p for p in self.prompts if p.id != prompt_id]
-            with open("storage/prompts.json", "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
-            self.display_persona_details(persona_index)
-            self.prompt_details_box.clear()
+
+        if confirm == QMessageBox.StandardButton.Yes:
+            self.prompts = [p for p in self.prompts if p.id != selected_prompt.id]
+
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+
+            with open(prompts_path, "w", encoding="utf-8") as f:
+
+
+                self.display_persona_details(self.persona_list.currentRow())
+
+
 
     def copy_prompt(self):
         prompt_index = self.prompt_list.currentRow()
