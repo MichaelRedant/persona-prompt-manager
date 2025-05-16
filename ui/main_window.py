@@ -10,6 +10,7 @@ from models.prompt import Prompt
 from ui.prompt_form import PromptForm
 from ui.persona_choice_dialog import PersonaChoiceDialog
 from ui.persona_form import PersonaForm
+from ui.tag_filter_panel import TagFilterPanel
 
 import json
 import os
@@ -87,8 +88,9 @@ class MainWindow(QMainWindow):
 
     # Elementen
         self.persona_list = QListWidget()
-        self.persona_list.setMinimumHeight(350)
+        self.persona_list.setMinimumHeight(200)
         self.prompt_list = QListWidget()
+        self.prompt_list.setMinimumHeight(200)
         self.details_box = QTextEdit()
         self.details_box.setReadOnly(True)
         self.details_box.setMaximumHeight(100)
@@ -143,35 +145,29 @@ class MainWindow(QMainWindow):
         layout.setSpacing(20)
         layout.addWidget(title_label)
 
-    # Zoekbalk
+        # Zoekbalk
         search_row = QHBoxLayout()
         search_row.addWidget(self.search_toggle_button)
         search_row.addWidget(self.search_input)
         layout.addLayout(search_row)
 
-    # Persona & Prompt lijsten
-        # 1. Zet size policies
+        # Persona & Prompt lijsten
         self.persona_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.prompt_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
-        # Aanmaakknop met keuze tussen blanco of sjabloon
+
+        # Aanmaakknop nieuwe persona
         self.add_persona_button = QPushButton("➕ Nieuwe Persona")
         self.add_persona_button.clicked.connect(self.add_persona)
 
-
-# 2. Bovenliggende horizontale layout
-        top_layout = QHBoxLayout()
-        top_layout.setSpacing(12)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-
-# 3. Persona card layout
+        # Titel boven persona
         self.persona_title_label = QLabel()
         self.persona_title_label.setStyleSheet("""
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 4px;
-""")
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        """)
 
+        # --- Persona Card
         persona_inner_layout = QVBoxLayout()
         persona_inner_layout.addWidget(self.persona_title_label)
         persona_inner_layout.addWidget(self.no_personas_label)
@@ -180,17 +176,14 @@ class MainWindow(QMainWindow):
         persona_card = QFrame()
         persona_card.setLayout(persona_inner_layout)
         persona_card.setStyleSheet("""
-    background-color: white;
-    border-radius: 12px;
-    border: 1px solid #e5e7eb;
-    padding: 12px;
-""")
+            background-color: white;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            padding: 12px;
+        """)
 
-        top_layout.addWidget(persona_card, 4)
-
-# 4. Prompt card layout
+        # --- Prompt Card
         prompt_card = self.wrap_in_card(self.prompt_list, "💡 Prompts")
-
         prompt_wrapper = QVBoxLayout()
         prompt_wrapper.addWidget(self.no_prompts_label)
         prompt_wrapper.addWidget(prompt_card)
@@ -198,13 +191,26 @@ class MainWindow(QMainWindow):
         prompt_card_container = QFrame()
         prompt_card_container.setLayout(prompt_wrapper)
 
-        top_layout.addWidget(prompt_card_container, 2)
+        # --- Tag Panel (rechterzijde)
+        from ui.tag_filter_panel import TagFilterPanel
+        self.tag_panel = TagFilterPanel(self, self.filter_by_tag)
 
-# 5. Voeg toe aan main layout
+        # --- Bovenliggende horizontale layout
+        top_layout = QHBoxLayout()
+        top_layout.setSpacing(12)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.addWidget(persona_card, 4)
+        top_layout.addWidget(prompt_card_container, 3)
+        top_layout.addWidget(self.tag_panel, 2)
+
         layout.addLayout(top_layout)
 
 
+
     # Beschrijving en prompttekst
+        self.details_box.setMinimumHeight(220)
+        self.details_box.setMaximumHeight(400)  # optioneel, voor consistente layout
+
         layout.addWidget(self.wrap_in_card(self.details_box, "🧠 Beschrijving"))
         layout.addWidget(self.wrap_in_card(self.prompt_details_box, "✏️ Prompttekst"))
         layout.addWidget(self.prompt_metadata_label)
@@ -256,6 +262,7 @@ class MainWindow(QMainWindow):
     # Data
         self.load_prompts()
         self.load_personas()
+        
 
     # Events
         self.persona_list.currentRowChanged.connect(self.display_persona_details)
@@ -311,6 +318,7 @@ class MainWindow(QMainWindow):
         # UI bijwerken
         self.refresh_persona_list()
         self.update_persona_title()
+        self.tag_panel.update_tags(self.personas, self.prompts)
 
 
     def load_prompts(self):
@@ -334,6 +342,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "JSON-fout",
                 "🚫 Fout bij het inlezen van 'prompts.json'. Controleer de opmaak.")
             self.prompts = []
+            self.tag_panel.update_tags(self.personas, self.prompts)
             
 
     def display_persona_details(self, index):
@@ -425,13 +434,11 @@ class MainWindow(QMainWindow):
 
 
     def add_prompt(self):
-    # Controleer of er een persona geselecteerd is
         selected_persona = None
         persona_index = self.persona_list.currentRow()
         if 0 <= persona_index < len(self.personas):
             selected_persona = self.personas[persona_index]
 
-    # Toon dialoog met ALLE personas + optioneel een voorgeselecteerde
         dialog = PromptForm(
             self,
             personas=self.personas,
@@ -440,36 +447,41 @@ class MainWindow(QMainWindow):
 
         if dialog.exec():
             new_prompt = dialog.get_prompt()
+            if not new_prompt:
+                return
+
             self.prompts.append(new_prompt)
 
-        # Opslaan in prompts.json
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
 
-        with open(prompts_path, "w", encoding="utf-8") as f:
+            with open(prompts_path, "w", encoding="utf-8") as f:
+                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
 
-
-        # Indien een persona actief was: refresh promptlijst
             if selected_persona:
                 self.display_persona_details(persona_index)
 
+            # Tags bijwerken
+            self.tag_panel.update_tags(self.personas, self.prompts)
+
+
+
 
     def edit_prompt(self):
-        persona_index = self.persona_list.currentRow()
-        prompt_index = self.prompt_list.currentRow()
-
-        if persona_index < 0 or prompt_index < 0:
-            QMessageBox.information(self, "Selectie vereist", "Selecteer een persona en een prompt om te bewerken.")
+        current_item = self.prompt_list.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "Selectie vereist", "Selecteer een prompt om te bewerken.")
             return
 
-        selected_persona = self.personas[persona_index]
-        persona_prompts = [p for p in self.prompts if p.persona_id == selected_persona.id]
+        prompt_id = current_item.data(Qt.UserRole)
+        selected_prompt = next((p for p in self.prompts if p.id == prompt_id), None)
 
-        if prompt_index >= len(persona_prompts):
-            QMessageBox.warning(self, "Ongeldige selectie", "Geselecteerde prompt is ongeldig.")
+        if not selected_prompt:
+            QMessageBox.warning(self, "Ongeldig", "Kon de geselecteerde prompt niet vinden.")
             return
 
-        selected_prompt = persona_prompts[prompt_index]
+        # Zoek bijhorende persona
+        selected_persona = next((p for p in self.personas if p.id == selected_prompt.persona_id), None)
 
         dialog = PromptForm(
             self,
@@ -480,11 +492,14 @@ class MainWindow(QMainWindow):
 
         if dialog.exec():
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
 
-        with open(prompts_path, "w", encoding="utf-8") as f:
+            with open(prompts_path, "w", encoding="utf-8") as f:
+                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
 
-            self.display_persona_details(persona_index)
+            self.display_persona_details(self.persona_list.currentRow())
+            self.tag_panel.update_tags(self.personas, self.prompts)
+
 
 
     def delete_prompt(self):
@@ -513,10 +528,12 @@ class MainWindow(QMainWindow):
             prompts_path = os.path.join(base_dir, "storage", "prompts.json")
 
             with open(prompts_path, "w", encoding="utf-8") as f:
+                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
 
 
                 self.display_persona_details(self.persona_list.currentRow())
 
+        self.tag_panel.update_tags(self.personas, self.prompts)
 
 
     def copy_prompt(self):
@@ -552,6 +569,8 @@ class MainWindow(QMainWindow):
             self.personas.append(new_persona)
             self.save_personas()
             self.refresh_persona_list()
+            self.tag_panel.update_tags(self.personas, self.prompts)
+
 
 
 
@@ -570,6 +589,8 @@ class MainWindow(QMainWindow):
             self.refresh_persona_list()
             self.update_persona_title()
             self.persona_list.setCurrentRow(index)
+            self.tag_panel.update_tags(self.personas, self.prompts)
+
 
     def delete_persona(self):
         index = self.persona_list.currentRow()
@@ -591,6 +612,8 @@ class MainWindow(QMainWindow):
             self.details_box.clear()
             self.prompt_list.clear()
             self.prompt_details_box.clear()
+            self.tag_panel.update_tags(self.personas, self.prompts)
+
 
     def perform_search(self, query: str):
         query = query.lower().strip()
@@ -796,7 +819,29 @@ class MainWindow(QMainWindow):
             self.personas.append(new_persona)
             self.save_personas()
             self.refresh_persona_list()
-            
+
+    def filter_by_tag(self, tag):
+        self.persona_list.clear()
+        self.prompt_list.clear()
+        self.details_box.clear()
+        self.prompt_details_box.clear()
+    
+        if not tag:
+            self.filtered_personas = self.personas.copy()
+        else:
+            self.filtered_personas = [p for p in self.personas if tag in p.tags]
+    
+        for persona in self.filtered_personas:
+            item = QListWidgetItem(persona.name)
+            self.persona_list.addItem(item)
+    
+        filtered_prompts = self.prompts if not tag else [p for p in self.prompts if tag in p.tags]
+        for prompt in filtered_prompts:
+            item = QListWidgetItem(prompt.title)
+            item.setData(Qt.UserRole, prompt.id)
+            self.prompt_list.addItem(item)
+
+
 
     def wrap_in_card(self, widget: QWidget, title: str = None) -> QFrame:
         frame = QFrame()
