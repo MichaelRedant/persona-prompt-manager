@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QApplication, QFrame, QLineEdit, QScrollArea, QFileDialog, QGraphicsDropShadowEffect, QSizePolicy, QSystemTrayIcon, QMenu
 )
 from PySide6.QtGui import QColor
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
 from models.persona import Persona
 from models.prompt import Prompt
 from ui.prompt_form import PromptForm
@@ -48,7 +48,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Persona Vault")
         self.setGeometry(100, 100, 1100, 800)
         self.is_dark_mode = False
-
         # Systeemtray
         self.tray_icon = QSystemTrayIcon(QIcon("assets/icon.ico"), self)
         self.tray_icon.setToolTip("Persona Vault")
@@ -56,7 +55,6 @@ class MainWindow(QMainWindow):
         tray_menu.addAction("Sluiten", self.close)
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
-
         # Menu
         menu = self.menuBar()
         file_menu = menu.addMenu("Bestand")
@@ -68,7 +66,6 @@ class MainWindow(QMainWindow):
         edit_menu.addAction("Nieuwe Prompt").triggered.connect(self.add_prompt)
         help_menu = menu.addMenu("Help")
         help_menu.addAction("Over").triggered.connect(self.show_about)
-
         # Titel
         title_label = QLabel("🧠 Persona Vault")
         title_label.setAlignment(Qt.AlignCenter)
@@ -81,70 +78,57 @@ class MainWindow(QMainWindow):
             border-radius: 8px;
             background-color: #eef2ff;
         """)
-
         # Zoekfunctie
         self.search_toggle_button = QPushButton("🔍")
         self.search_toggle_button.setFixedWidth(120)
         self.search_toggle_button.setStyleSheet("""
-        QPushButton {
-            background-color: #4f46e5;
-            color: white;
-            padding: 8px 16px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-        }
-        QPushButton:hover {
-            background-color: #4338ca;
-        }
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #4338ca;
+            }
         """)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Typ om te zoeken...")
         self.search_input.hide()
         self.search_input.setFixedWidth(300)
         self.search_input.setStyleSheet("""
-        QLineEdit {
-            background-color: white;
-            padding: 10px 16px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 1px solid #4f46e5;
-            outline: none;
-        }
-    """)
+            QLineEdit {
+                background-color: white;
+                padding: 10px 16px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #4f46e5;
+                outline: none;
+            }
+        """)
         self.search_toggle_button.clicked.connect(self.toggle_search_input)
-
+        # Zoekbalk layout
         search_row = QHBoxLayout()
         search_row.setSpacing(12)
         search_row.addWidget(self.search_toggle_button)
         search_row.addWidget(self.search_input)
-        
-        # Hoofdlayout
-        layout = QVBoxLayout()
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(20)
-        layout.addWidget(title_label)
-        layout.addLayout(search_row)
-
-        # Persona-elementen
+        # Persona widgets
         self.persona_list = QListWidget()
-        self.persona_list.setMinimumHeight(200)
         self.no_personas_label = QLabel("Geen persona's gevonden.")
         self.no_personas_label.setAlignment(Qt.AlignCenter)
         self.no_personas_label.hide()
-
         self.persona_title_label = QLabel("📚 Persona's")
         self.persona_title_label.setStyleSheet("font-size: 14px; font-weight: 600; margin-bottom: 4px;")
-
         persona_inner_layout = QVBoxLayout()
         persona_inner_layout.addWidget(self.persona_title_label)
         persona_inner_layout.addWidget(self.no_personas_label)
         persona_inner_layout.addWidget(self.persona_list)
-
         persona_card = QFrame()
         persona_card.setLayout(persona_inner_layout)
         persona_card.setStyleSheet("""
@@ -153,112 +137,95 @@ class MainWindow(QMainWindow):
             border: 1px solid #e5e7eb;
             padding: 12px;
         """)
-
-        # Prompt-elementen
+        # Prompt widgets
         self.prompt_list = QListWidget()
-        self.prompt_list.setMinimumHeight(200)
         self.no_prompts_label = QLabel("Geen prompts gevonden.")
         self.no_prompts_label.setAlignment(Qt.AlignCenter)
         self.no_prompts_label.hide()
-
         prompt_card_widget = self.wrap_in_card(self.prompt_list, "💡 Prompts")
         prompt_wrapper = QVBoxLayout()
         prompt_wrapper.addWidget(self.no_prompts_label)
         prompt_wrapper.addWidget(prompt_card_widget)
-
         prompt_card_container = QFrame()
         prompt_card_container.setLayout(prompt_wrapper)
-
-        # Tag panel
+        # Tag Panel
         from ui.tag_filter_panel import TagFilterPanel
         self.tag_panel = TagFilterPanel(self, self.filter_by_tag)
-
-        # Bovenste 3-koloms layout
+        # Bovenste layout (persona + prompts + tags)
         top_layout = QHBoxLayout()
         top_layout.setSpacing(12)
         top_layout.addWidget(persona_card, 4)
         top_layout.addWidget(prompt_card_container, 3)
         top_layout.addWidget(self.tag_panel, 2)
-        layout.addLayout(top_layout)
-
-        # Promptdetails
+        # Prompt detail
         self.prompt_details_box = QTextEdit()
         self.prompt_details_box.setReadOnly(True)
         self.prompt_details_box.setMinimumHeight(200)
-
         prompt_card = self.wrap_in_card(self.prompt_details_box, "✏️ Prompttekst")
-
+        # Prompt interactie (rechts)
         self.copy_prompt_button = QPushButton("📋 Kopieer prompt")
         self.copy_prompt_button.clicked.connect(self.copy_prompt)
         self.copy_prompt_button.setCursor(Qt.PointingHandCursor)
         self.copy_prompt_button.setStyleSheet("""
-        QPushButton {
-            background-color: #4f46e5;
-            color: white;
-            padding: 10px 18px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-        }
-        QPushButton:hover {
-            background-color: #4338ca;
-        }
-    """)
+    QPushButton {
+        background-color: #4f46e5;
+        color: white;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+    }
+    QPushButton:hover {
+        background-color: #4338ca;
+    }
+""")
         self.prompt_info_label = QLabel()
         self.prompt_info_label.setStyleSheet("font-size: 12px; color: #6b7280;")
         self.prompt_info_label.setWordWrap(True)
-        self.prompt_tip_label = QLabel("💡 Tip: Start prompts met een duidelijke rol, zoals \"Je bent een expert copywriter...\")")
+        self.prompt_tip_label = QLabel("💡 Tip: Start prompts met een duidelijke rol, zoals \"Je bent een expert copywriter...\"")
         self.prompt_tip_label.setStyleSheet("font-size: 11px; color: #94a3b8;")
         self.prompt_tip_label.setWordWrap(True)
         self.try_prompt_button = QPushButton("🧪 Test prompt in ChatGPT")
         self.try_prompt_button.clicked.connect(self.try_prompt_in_chatgpt)
         self.try_prompt_button.setCursor(Qt.PointingHandCursor)
         self.try_prompt_button.setStyleSheet("""
-        QPushButton {
-            background-color: #16a34a;
-            color: white;
-            padding: 10px 18px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-        }
-        QPushButton:hover {
-            background-color: #15803d;
-        }
-    """)
-
+    QPushButton {
+        background-color: #16a34a;
+        color: white;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        border-radius: 10px;
+    }
+    QPushButton:hover {
+        background-color: #15803d;
+    }
+""")
         test_button_box = QVBoxLayout()
+        test_button_box.setSpacing(10)
         test_button_box.addWidget(self.copy_prompt_button)
         test_button_box.addWidget(self.prompt_info_label)
         test_button_box.addWidget(self.prompt_tip_label)
         test_button_box.addStretch()
         test_button_box.addWidget(self.try_prompt_button)
-
         test_card = QFrame()
         test_card.setLayout(test_button_box)
         test_card.setStyleSheet("background-color: transparent;")
-
+        # Combineer prompttekst + testknoppen
         prompt_row = QHBoxLayout()
         prompt_row.setSpacing(20)
         prompt_row.addWidget(prompt_card, 5)
         prompt_row.addWidget(test_card, 3)
-        layout.addLayout(prompt_row)
-
         # Beschrijving
         self.details_box = QTextEdit()
         self.details_box.setReadOnly(True)
-        self.details_box.setMinimumHeight(220)
-        self.details_box.setMaximumHeight(400)
-        layout.addWidget(self.wrap_in_card(self.details_box, "🧠 Beschrijving"))
-
+        self.details_box.setMinimumHeight(100)
         # Metadata
         self.prompt_metadata_label = QLabel()
         self.prompt_metadata_label.setStyleSheet("font-size: 12px; color: #6b7280; padding-left: 12px; padding-top: 4px;")
-        layout.addWidget(self.prompt_metadata_label)
-
-        # Knoppen persona
+        # Persona + prompt knoppen
         self.add_persona_button = QPushButton("➕ Nieuwe Persona")
         self.edit_persona_button = QPushButton("✏️ Bewerken Persona")
         self.delete_persona_button = QPushButton("❌ Verwijderen Persona")
@@ -268,9 +235,6 @@ class MainWindow(QMainWindow):
         persona_btns.addWidget(self.edit_persona_button)
         persona_btns.addWidget(self.delete_persona_button)
         persona_btns.addWidget(self.favorite_button)
-        layout.addLayout(persona_btns)
-
-        # Knoppen prompt
         self.add_prompt_button = QPushButton("➕ Nieuwe Prompt")
         self.edit_prompt_button = QPushButton("✏️ Bewerken Prompt")
         self.delete_prompt_button = QPushButton("❌ Verwijderen Prompt")
@@ -278,36 +242,48 @@ class MainWindow(QMainWindow):
         prompt_btns.addWidget(self.add_prompt_button)
         prompt_btns.addWidget(self.edit_prompt_button)
         prompt_btns.addWidget(self.delete_prompt_button)
+        # Alles in de layout
+        layout = QVBoxLayout()
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
+        layout.addWidget(title_label)
+        layout.addLayout(search_row)
+        layout.addLayout(top_layout)
+        layout.addLayout(prompt_row)
+        layout.addWidget(self.wrap_in_card(self.details_box, "🧠 Beschrijving"))
+        layout.addWidget(self.prompt_metadata_label)
+        layout.addLayout(persona_btns)
         layout.addLayout(prompt_btns)
-
         # Scrollcontainer
         container_widget = QWidget()
         container_widget.setLayout(layout)
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(container_widget)
-        scroll_area.setStyleSheet("""
-            QScrollBar:vertical {
-                background: #f1f5f9;
-                width: 12px;
-                margin: 0;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background: #94a3b8;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #64748b;
-            }
-        """)
         self.setCentralWidget(scroll_area)
-
-        # --- Laad data
+        # Events
+        self.persona_list.currentRowChanged.connect(self.display_persona_details)
+        self.prompt_list.itemSelectionChanged.connect(lambda: self.display_prompt_details(self.prompt_list.currentRow()))
+        self.search_input.textChanged.connect(self.perform_search)
+        self.add_prompt_button.clicked.connect(self.add_prompt)
+        self.edit_prompt_button.clicked.connect(self.edit_prompt)
+        self.delete_prompt_button.clicked.connect(self.delete_prompt)
+        self.copy_prompt_button.clicked.connect(self.copy_prompt)
+        self.add_persona_button.clicked.connect(self.add_persona)
+        self.edit_persona_button.clicked.connect(self.edit_persona)
+        self.delete_persona_button.clicked.connect(self.delete_persona)
+        self.favorite_button.clicked.connect(self.toggle_favorite)
+        self.persona_list.itemSelectionChanged.connect(self.check_selection_state)
+        self.prompt_list.itemSelectionChanged.connect(self.check_selection_state)
+        # Click catcher
+        self.click_catcher = ClickCatcherFrame(self, self.clear_selections)
+        self.click_catcher.setGeometry(self.rect())
+        self.click_catcher.raise_()
+        self.click_catcher.lower()
+        # Data
         self.load_prompts()
         self.load_personas()
-
-        # --- Events koppelen
+              # --- Events koppelen
         self.persona_list.currentRowChanged.connect(self.display_persona_details)
         self.prompt_list.itemSelectionChanged.connect(lambda: self.display_prompt_details(self.prompt_list.currentRow()))
         self.search_input.textChanged.connect(self.perform_search)
@@ -327,7 +303,11 @@ class MainWindow(QMainWindow):
         self.click_catcher.setGeometry(self.rect())
         self.click_catcher.raise_()
         self.click_catcher.lower()
+        self.showMaximized()
+        self.apply_button_effects(self.copy_prompt_button, "#4f46e5", "#4338ca")  # paars
+        self.apply_button_effects(self.try_prompt_button, "#16a34a", "#15803d")   # groen
 
+        
 
 
     def load_personas(self):
@@ -442,10 +422,18 @@ class MainWindow(QMainWindow):
 
                 # Dynamische tips (optioneel randomiseren)
                 tips = [
-                    "💡 Tip: Start prompts met een duidelijke rol, zoals “Je bent een expert copywriter...”",
-                    "💡 Tip: Wees specifiek over output: 'Geef me 3 opsommingen' i.p.v. 'Schrijf iets'",
-                    "💡 Tip: Gebruik context: 'Je werkt voor een startup in gezondheidszorg...'",
-                ]
+    "💡 Tip: Start prompts met een duidelijke rol, zoals “Je bent een expert copywriter...”",
+    "💡 Tip: Wees specifiek over output: 'Geef me 3 opsommingen' i.p.v. 'Schrijf iets'",
+    "💡 Tip: Gebruik context: 'Je werkt voor een startup in gezondheidszorg...'",
+    "💡 Tip: Voeg beperkingen toe: 'Gebruik maximaal 100 woorden'",
+    "💡 Tip: Geef een format op: 'Antwoord in een lijst met emoji's'",
+    "💡 Tip: Vraag GPT om te denken: 'Denk stap voor stap na over dit probleem'",
+    "💡 Tip: Laat GPT zich verplaatsen in een rol: 'Je bent een recruiter die...'",
+    "💡 Tip: Voeg voorbeelddata toe in je prompt voor betere output",
+    "💡 Tip: Benoem wat je niet wilt: 'Vermijd overdreven technische termen'",
+    "💡 Tip: Gebruik tone of voice: 'Schrijf in een informele, enthousiaste stijl'",
+]
+
                 import random
                 self.prompt_tip_label.setText(random.choice(tips))
                 self.prompt_details_box.setPlainText(prompt.content)
@@ -931,7 +919,9 @@ class MainWindow(QMainWindow):
         """)
             layout.addWidget(title_label)
 
+        widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(widget)
+
 
     # Dynamische kleuren afhankelijk van dark mode
         bg_color = '#2d2d2d' if getattr(self, 'is_dark_mode', False) else 'white'
@@ -957,3 +947,38 @@ class MainWindow(QMainWindow):
         frame.setGraphicsEffect(shadow)
 
         return frame
+    
+    def apply_button_effects(button, base_color, hover_color):
+        # ✅ Basiskleur en schaduw
+        button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {base_color};
+                color: white;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                border-radius: 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_color};
+            }}
+        """)
+    
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(12)
+        shadow.setXOffset(0)
+        shadow.setYOffset(4)
+        shadow.setColor(QColor(0, 0, 0, 50))
+        button.setGraphicsEffect(shadow)
+    
+        # ✨ Animatie op hover
+        animation = QPropertyAnimation(button, b"graphicsEffect.opacity")
+        animation.setDuration(200)
+        animation.setStartValue(0.95)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.InOutQuad)
+        animation.start()
+        button.animation = animation  # voorkomen dat garbage collection het verwijdert
+    
+   
