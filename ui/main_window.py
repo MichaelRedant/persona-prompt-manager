@@ -1,16 +1,20 @@
 from PySide6.QtWidgets import (
     QMainWindow, QListWidget, QTextEdit, QVBoxLayout, QHBoxLayout,
     QWidget, QLabel, QListWidgetItem, QPushButton, QMessageBox,
-    QApplication, QFrame, QLineEdit, QScrollArea, QFileDialog, QGraphicsDropShadowEffect, QSizePolicy, QSystemTrayIcon, QMenu
+    QApplication, QFrame, QLineEdit, QScrollArea, QFileDialog, QGraphicsDropShadowEffect, QSizePolicy, QSystemTrayIcon, QMenu, QGraphicsOpacityEffect
 )
 from PySide6.QtGui import QColor
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer
 from models.persona import Persona
 from models.prompt import Prompt
 from ui.prompt_form import PromptForm
 from ui.persona_choice_dialog import PersonaChoiceDialog
 from ui.persona_form import PersonaForm
 from ui.tag_filter_panel import TagFilterPanel
+from datetime import datetime
+from ui.ai_mood import determine_ai_mood
+from collections import Counter
+
 
 import json
 import os
@@ -19,26 +23,13 @@ import urllib.parse
 
 from PySide6.QtWidgets import QGraphicsDropShadowEffect
 from PySide6.QtGui import QColor, QIcon
+from ui.click_catcher import ClickCatcherFrame
+
 
 
 
 icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets", "icon.ico"))
 
-
-
-class ClickCatcherFrame(QFrame):
-    def __init__(self, parent=None, on_click=None):
-        super().__init__(parent)
-        icon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "icon.ico")
-        self.on_click = on_click
-        self.setMouseTracking(True)
-        self.setStyleSheet("background: transparent;")
-        self.setFrameShape(QFrame.NoFrame)
-
-    def mousePressEvent(self, event):
-        if self.on_click:
-            self.on_click()
-        super().mousePressEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -48,13 +39,15 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Persona Vault")
         self.setGeometry(100, 100, 1100, 800)
         self.is_dark_mode = False
-        # Systeemtray
+    
+        # Tray
         self.tray_icon = QSystemTrayIcon(QIcon("assets/icon.ico"), self)
         self.tray_icon.setToolTip("Persona Vault")
         tray_menu = QMenu()
         tray_menu.addAction("Sluiten", self.close)
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
+    
         # Menu
         menu = self.menuBar()
         file_menu = menu.addMenu("Bestand")
@@ -66,18 +59,56 @@ class MainWindow(QMainWindow):
         edit_menu.addAction("Nieuwe Prompt").triggered.connect(self.add_prompt)
         help_menu = menu.addMenu("Help")
         help_menu.addAction("Over").triggered.connect(self.show_about)
-        # Titel
+            
+                # 📦 Hoofdlayout eerst definiëren
+        layout = QVBoxLayout()
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
+
+        # 🧠 Titel
         title_label = QLabel("🧠 Persona Vault")
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setStyleSheet("""
-            font-size: 32px;
+            font-size: 36px;
             font-weight: 800;
             color: #1e3a8a;
-            padding: 16px;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            background-color: #eef2ff;
+            padding: 32px;
+            border-radius: 16px;
+            background: qlineargradient(
+                spread:pad,
+                x1:0, y1:0, x2:1, y2:0,
+                stop:0 #e0e7ff,
+                stop:1 #c7d2fe
+            );
         """)
+
+        # Mood ophalen op basis van persona’s
+        self.current_mood = determine_ai_mood([])  # leeg bij init
+        self.status_chip = QLabel()
+        self.status_chip.setAlignment(Qt.AlignRight)
+        self.status_chip.setStyleSheet(self.get_chip_style())
+        self.status_chip.mousePressEvent = self.show_mood_insights
+        self.status_chip.setCursor(Qt.PointingHandCursor)
+
+
+
+        # 👋 Subtitel
+        subtitle = QLabel("Welkom terug, Michaël — klaar om een nieuwe prompt te bouwen?")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet("font-size: 14px; color: #64748b; margin-top: 0px; margin-bottom: 16px;")
+
+        # 🧭 Header Layout
+        header_layout = QVBoxLayout()
+        header_layout.addWidget(self.status_chip, alignment=Qt.AlignRight)
+        header_layout.addWidget(title_label)
+        header_layout.addWidget(subtitle)
+
+        # 📌 Voeg header toe aan layout
+        layout.addLayout(header_layout)
+
+
+
+    
         # Zoekfunctie
         self.search_toggle_button = QPushButton("🔍")
         self.search_toggle_button.setFixedWidth(120)
@@ -113,12 +144,13 @@ class MainWindow(QMainWindow):
             }
         """)
         self.search_toggle_button.clicked.connect(self.toggle_search_input)
-        # Zoekbalk layout
+    
         search_row = QHBoxLayout()
         search_row.setSpacing(12)
         search_row.addWidget(self.search_toggle_button)
         search_row.addWidget(self.search_input)
-        # Persona widgets
+    
+        # Persona UI
         self.persona_list = QListWidget()
         self.no_personas_label = QLabel("Geen persona's gevonden.")
         self.no_personas_label.setAlignment(Qt.AlignCenter)
@@ -137,7 +169,8 @@ class MainWindow(QMainWindow):
             border: 1px solid #e5e7eb;
             padding: 12px;
         """)
-        # Prompt widgets
+    
+        # Prompt UI
         self.prompt_list = QListWidget()
         self.no_prompts_label = QLabel("Geen prompts gevonden.")
         self.no_prompts_label.setAlignment(Qt.AlignCenter)
@@ -148,38 +181,40 @@ class MainWindow(QMainWindow):
         prompt_wrapper.addWidget(prompt_card_widget)
         prompt_card_container = QFrame()
         prompt_card_container.setLayout(prompt_wrapper)
-        # Tag Panel
+    
         from ui.tag_filter_panel import TagFilterPanel
         self.tag_panel = TagFilterPanel(self, self.filter_by_tag)
-        # Bovenste layout (persona + prompts + tags)
+    
         top_layout = QHBoxLayout()
         top_layout.setSpacing(12)
         top_layout.addWidget(persona_card, 4)
         top_layout.addWidget(prompt_card_container, 3)
         top_layout.addWidget(self.tag_panel, 2)
-        # Prompt detail
+    
+        # Prompttekst
         self.prompt_details_box = QTextEdit()
         self.prompt_details_box.setReadOnly(True)
         self.prompt_details_box.setMinimumHeight(200)
         prompt_card = self.wrap_in_card(self.prompt_details_box, "✏️ Prompttekst")
-        # Prompt interactie (rechts)
+    
+        # Interactieknoppen
         self.copy_prompt_button = QPushButton("📋 Kopieer prompt")
         self.copy_prompt_button.clicked.connect(self.copy_prompt)
         self.copy_prompt_button.setCursor(Qt.PointingHandCursor)
         self.copy_prompt_button.setStyleSheet("""
-    QPushButton {
-        background-color: #4f46e5;
-        color: white;
-        padding: 10px 20px;
-        font-size: 14px;
-        font-weight: 600;
-        border: none;
-        border-radius: 10px;
-    }
-    QPushButton:hover {
-        background-color: #4338ca;
-    }
-""")
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #4338ca;
+            }
+        """)
         self.prompt_info_label = QLabel()
         self.prompt_info_label.setStyleSheet("font-size: 12px; color: #6b7280;")
         self.prompt_info_label.setWordWrap(True)
@@ -190,19 +225,20 @@ class MainWindow(QMainWindow):
         self.try_prompt_button.clicked.connect(self.try_prompt_in_chatgpt)
         self.try_prompt_button.setCursor(Qt.PointingHandCursor)
         self.try_prompt_button.setStyleSheet("""
-    QPushButton {
-        background-color: #16a34a;
-        color: white;
-        padding: 10px 20px;
-        font-size: 14px;
-        font-weight: 600;
-        border: none;
-        border-radius: 10px;
-    }
-    QPushButton:hover {
-        background-color: #15803d;
-    }
-""")
+            QPushButton {
+                background-color: #16a34a;
+                color: white;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #15803d;
+            }
+        """)
+    
         test_button_box = QVBoxLayout()
         test_button_box.setSpacing(10)
         test_button_box.addWidget(self.copy_prompt_button)
@@ -213,40 +249,43 @@ class MainWindow(QMainWindow):
         test_card = QFrame()
         test_card.setLayout(test_button_box)
         test_card.setStyleSheet("background-color: transparent;")
-        # Combineer prompttekst + testknoppen
+    
         prompt_row = QHBoxLayout()
         prompt_row.setSpacing(20)
         prompt_row.addWidget(prompt_card, 5)
         prompt_row.addWidget(test_card, 3)
+    
         # Beschrijving
         self.details_box = QTextEdit()
         self.details_box.setReadOnly(True)
         self.details_box.setMinimumHeight(100)
-        # Metadata
+    
         self.prompt_metadata_label = QLabel()
         self.prompt_metadata_label.setStyleSheet("font-size: 12px; color: #6b7280; padding-left: 12px; padding-top: 4px;")
-        # Persona + prompt knoppen
+    
         self.add_persona_button = QPushButton("➕ Nieuwe Persona")
         self.edit_persona_button = QPushButton("✏️ Bewerken Persona")
         self.delete_persona_button = QPushButton("❌ Verwijderen Persona")
         self.favorite_button = QPushButton("⭐ Toggle Favoriet")
+    
         persona_btns = QHBoxLayout()
         persona_btns.addWidget(self.add_persona_button)
         persona_btns.addWidget(self.edit_persona_button)
         persona_btns.addWidget(self.delete_persona_button)
         persona_btns.addWidget(self.favorite_button)
+    
         self.add_prompt_button = QPushButton("➕ Nieuwe Prompt")
         self.edit_prompt_button = QPushButton("✏️ Bewerken Prompt")
         self.delete_prompt_button = QPushButton("❌ Verwijderen Prompt")
+    
         prompt_btns = QHBoxLayout()
         prompt_btns.addWidget(self.add_prompt_button)
         prompt_btns.addWidget(self.edit_prompt_button)
         prompt_btns.addWidget(self.delete_prompt_button)
-        # Alles in de layout
-        layout = QVBoxLayout()
+    
+        # Layout opbouw
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(20)
-        layout.addWidget(title_label)
         layout.addLayout(search_row)
         layout.addLayout(top_layout)
         layout.addLayout(prompt_row)
@@ -254,13 +293,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.prompt_metadata_label)
         layout.addLayout(persona_btns)
         layout.addLayout(prompt_btns)
-        # Scrollcontainer
+    
         container_widget = QWidget()
         container_widget.setLayout(layout)
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(container_widget)
         self.setCentralWidget(scroll_area)
+    
         # Events
         self.persona_list.currentRowChanged.connect(self.display_persona_details)
         self.prompt_list.itemSelectionChanged.connect(lambda: self.display_prompt_details(self.prompt_list.currentRow()))
@@ -275,37 +315,24 @@ class MainWindow(QMainWindow):
         self.favorite_button.clicked.connect(self.toggle_favorite)
         self.persona_list.itemSelectionChanged.connect(self.check_selection_state)
         self.prompt_list.itemSelectionChanged.connect(self.check_selection_state)
-        # Click catcher
+    
         self.click_catcher = ClickCatcherFrame(self, self.clear_selections)
         self.click_catcher.setGeometry(self.rect())
         self.click_catcher.raise_()
         self.click_catcher.lower()
+    
         # Data
         self.load_prompts()
         self.load_personas()
-              # --- Events koppelen
-        self.persona_list.currentRowChanged.connect(self.display_persona_details)
-        self.prompt_list.itemSelectionChanged.connect(lambda: self.display_prompt_details(self.prompt_list.currentRow()))
-        self.search_input.textChanged.connect(self.perform_search)
-        self.add_prompt_button.clicked.connect(self.add_prompt)
-        self.edit_prompt_button.clicked.connect(self.edit_prompt)
-        self.delete_prompt_button.clicked.connect(self.delete_prompt)
-        self.copy_prompt_button.clicked.connect(self.copy_prompt)
-        self.add_persona_button.clicked.connect(self.add_persona)
-        self.edit_persona_button.clicked.connect(self.edit_persona)
-        self.delete_persona_button.clicked.connect(self.delete_persona)
-        self.favorite_button.clicked.connect(self.toggle_favorite)
-        self.persona_list.itemSelectionChanged.connect(self.check_selection_state)
-        self.prompt_list.itemSelectionChanged.connect(self.check_selection_state)
-
-        # --- Click catcher om selectie leeg te maken
-        self.click_catcher = ClickCatcherFrame(self, self.clear_selections)
-        self.click_catcher.setGeometry(self.rect())
-        self.click_catcher.raise_()
-        self.click_catcher.lower()
+        self.update_status_chip()
+        self.update_moodchip_tooltip()
+    
+        # Button Effects (zorg dat deze functie bestaat!)
+        self.apply_button_effects(self.copy_prompt_button, "#4f46e5", "#4338ca")
+        self.apply_button_effects(self.try_prompt_button, "#16a34a", "#15803d")
+    
         self.showMaximized()
-        self.apply_button_effects(self.copy_prompt_button, "#4f46e5", "#4338ca")  # paars
-        self.apply_button_effects(self.try_prompt_button, "#16a34a", "#15803d")   # groen
+
 
         
 
@@ -342,6 +369,10 @@ class MainWindow(QMainWindow):
         self.refresh_persona_list()
         self.update_persona_title()
         self.tag_panel.update_tags(self.personas, self.prompts)
+        self.update_status_chip()
+        self.update_moodchip_tooltip()
+
+
 
 
     def load_prompts(self):
@@ -615,6 +646,8 @@ class MainWindow(QMainWindow):
             self.personas.append(new_persona)
             self.save_personas()
             self.refresh_persona_list()
+            self.update_status_chip()
+            self.update_moodchip_tooltip()
             self.tag_panel.update_tags(self.personas, self.prompts)
 
 
@@ -633,6 +666,8 @@ class MainWindow(QMainWindow):
             with open("storage/db.json", "w", encoding="utf-8") as f:
                 json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
             self.refresh_persona_list()
+            self.update_status_chip()
+            self.update_moodchip_tooltip()
             self.update_persona_title()
             self.persona_list.setCurrentRow(index)
             self.tag_panel.update_tags(self.personas, self.prompts)
@@ -653,6 +688,8 @@ class MainWindow(QMainWindow):
             with open("storage/db.json", "w", encoding="utf-8") as f:
                 json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
             self.refresh_persona_list()
+            self.update_status_chip()
+            self.update_moodchip_tooltip()
             self.update_persona_title()
 
             self.details_box.clear()
@@ -916,29 +953,28 @@ class MainWindow(QMainWindow):
             font-size: 14px;
             font-weight: 600;
             margin-bottom: 4px;
-        """)
+            """)
             layout.addWidget(title_label)
 
         widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(widget)
 
-
-    # Dynamische kleuren afhankelijk van dark mode
+        # Kleur & stijl
         bg_color = '#2d2d2d' if getattr(self, 'is_dark_mode', False) else 'white'
         text_color = '#e0e0e0' if getattr(self, 'is_dark_mode', False) else '#1e293b'
         border_color = '#444' if getattr(self, 'is_dark_mode', False) else '#e5e7eb'
 
         frame.setStyleSheet(f"""
-        QFrame {{
-            background-color: {bg_color};
-            color: {text_color};
-            border-radius: 12px;
-            border: 1px solid {border_color};
-            padding: 12px;
-        }}
-    """)
+            QFrame {{
+                background-color: {bg_color};
+                color: {text_color};
+                border-radius: 12px;
+                border: 1px solid {border_color};
+                padding: 12px;
+            }}
+        """)
 
-    # Shadow effect
+        # Schaduw
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(12)
         shadow.setXOffset(0)
@@ -946,11 +982,190 @@ class MainWindow(QMainWindow):
         shadow.setColor(QColor(0, 0, 0, 50))
         frame.setGraphicsEffect(shadow)
 
-        return frame
+        return frame  # ⬅️ deze return is CRUCIAAL!
+
+
+
+    def update_status_chip(self):
+        self.current_mood = determine_ai_mood(self.personas)
+        self.status_chip.setText(f"{self.current_mood['emoji']} {self.current_mood['label']}")
+        self.status_chip.setStyleSheet(self.get_chip_style())
+
+    def get_chip_style(self):
+        mood = self.current_mood
+        return f"""
+            background-color: {mood['bg']};
+            color: {mood['fg']};
+            padding: 6px 14px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        """
     
-    def apply_button_effects(button, base_color, hover_color):
-        # ✅ Basiskleur en schaduw
-        button.setStyleSheet(f"""
+    def update_moodchip_tooltip(self):
+        if not hasattr(self, 'personas') or not self.personas:
+            self.status_chip.setToolTip("Nog geen persona’s aanwezig.")
+            return
+
+        # Verzamel alle tags
+        all_tags = [tag for p in self.personas for tag in p.tags]
+        if not all_tags:
+            self.status_chip.setToolTip("Nog geen tags toegevoegd aan persona’s.")
+            return
+
+        # Top 3 tags
+        tag_counts = Counter(all_tags)
+        top_tags = tag_counts.most_common(3)
+        tag_list = ", ".join(tag for tag, _ in top_tags)
+
+        tooltip_text = f"""💡 AI Mood wordt gegenereerd o.b.v. je actieve persona’s.\nTop 3 tags: {tag_list}"""
+        self.status_chip.setToolTip(tooltip_text)
+
+
+    def show_mood_insights(self, event):
+        if hasattr(self, 'mood_popup') and self.mood_popup is not None:
+            self.mood_popup.close()
+            self.mood_popup = None
+
+        mood = self.current_mood.get('label', "Onbekend")
+        mood_emoji = self.current_mood.get('emoji', "💡")
+        insights = {
+            "Creatieve Flow": [
+                "🎨 Je AI mood is sterk creatief.",
+                "🧠 Persona's in design en UI/UX.",
+                "✨ Gebruik visueel geïnspireerde prompts."
+            ],
+            "Strategisch Denken": [
+                "📊 Analyse en planning staan centraal.",
+                "🧠 Data-gedreven persona’s aanwezig.",
+                "📈 Combineer met optimalisatie-prompts."
+            ],
+            "Innovatief": [
+                "🚀 Je team straalt technologie uit.",
+                "🤖 AI, automation en innovatie-tags.",
+                "🔬 Combineer met experimenterende prompts."
+            ],
+            "Empathisch": [
+                "🤝 Focus op interpersoonlijke thema’s.",
+                "🧘 Persona’s in coaching en zorg.",
+                "💬 Gebruik zachtere, human-centered prompts."
+            ],
+            "Gebalanceerde Mix": [
+                "🧩 Divers persona-aanbod.",
+                "🎯 Geen dominante richting, veelzijdig inzetbaar.",
+                "🎛️ Test verschillende strategieën."
+            ],
+            "GPT paraat": [
+                "💡 Geen specifieke richting gedetecteerd.",
+                "📥 Voeg persona’s toe om mood te activeren.",
+                "🧪 Tip: gebruik tags en categorieën."
+            ]
+        }
+
+        popup = QFrame(self)
+        popup.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        popup.setObjectName("moodPopup")
+        popup.setStyleSheet("""
+        QFrame#moodPopup {
+            background-color: rgba(255, 255, 255, 0.75);
+            border-radius: 16px;
+            border: 1px solid rgba(229, 231, 235, 0.6);
+            backdrop-filter: blur(16px); /* dit werkt enkel in Web-technologie, NIET in Qt */
+        }
+        QLabel {
+            color: #1e293b;
+            font-size: 13px;
+            padding: 4px 10px;
+        }
+        QLabel#title {
+            font-size: 15px;
+            font-weight: bold;
+            color: #1d4ed8;
+            padding-top: 8px;
+        }
+    """)
+
+
+        layout = QVBoxLayout(popup)
+        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setSpacing(6)
+
+        title = QLabel(f"{mood_emoji} {mood}")
+        title.setObjectName("title")
+        layout.addWidget(title)
+
+        for line in insights.get(mood, ["ℹ️ Geen inzichten beschikbaar."]):
+            lbl = QLabel(line)
+            layout.addWidget(lbl)
+
+        popup.adjustSize()
+
+        # 📍 Positionering: onder de chip, uitgelijnd rechts met het main window
+        chip_pos = self.status_chip.mapToGlobal(self.status_chip.rect().bottomRight())
+        window_right = self.mapToGlobal(self.rect().topRight()).x()
+        popup_width = popup.sizeHint().width()
+
+        margin = 12
+        x = window_right - popup_width - margin
+        y = chip_pos.y() + 8
+
+        popup.move(x, y)
+
+        # 🎞️ Fade-in
+        opacity_effect = QGraphicsOpacityEffect(popup)
+        popup.setGraphicsEffect(opacity_effect)
+        fade_in = QPropertyAnimation(opacity_effect, b"opacity", popup)
+        fade_in.setDuration(300)
+        fade_in.setStartValue(0)
+        fade_in.setEndValue(1)
+        fade_in.setEasingCurve(QEasingCurve.OutCubic)
+        fade_in.start()
+
+        # Schaduw
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(24)
+        shadow.setXOffset(0)
+        shadow.setYOffset(6)
+        shadow.setColor(QColor(0, 0, 0, 60))
+        popup.setGraphicsEffect(shadow)
+
+        popup.show()
+        self.mood_popup = popup
+
+        # 🕐 Automatische sluiting
+        def fade_out_and_close():
+            fade_out = QPropertyAnimation(opacity_effect, b"opacity", popup)
+            fade_out.setDuration(400)
+            fade_out.setStartValue(1)
+            fade_out.setEndValue(0)
+            fade_out.setEasingCurve(QEasingCurve.InOutCubic)
+            fade_out.finished.connect(popup.close)
+            fade_out.start()
+
+        QTimer.singleShot(6000, fade_out_and_close)
+
+
+
+
+
+
+    
+    def apply_button_effects(self, button, base_color: str, hover_color: str):
+        # Schaduw
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(16)
+        shadow.setXOffset(0)
+        shadow.setYOffset(3)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        button.setGraphicsEffect(shadow)
+    
+        # Animatie
+        anim = QPropertyAnimation(button, b"styleSheet")
+        anim.setDuration(250)
+        anim.setEasingCurve(QEasingCurve.OutCubic)
+    
+        # Basisstijl
+        normal_style = f"""
             QPushButton {{
                 background-color: {base_color};
                 color: white;
@@ -963,22 +1178,7 @@ class MainWindow(QMainWindow):
             QPushButton:hover {{
                 background-color: {hover_color};
             }}
-        """)
+        """
+        button.setStyleSheet(normal_style)
+        
     
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(12)
-        shadow.setXOffset(0)
-        shadow.setYOffset(4)
-        shadow.setColor(QColor(0, 0, 0, 50))
-        button.setGraphicsEffect(shadow)
-    
-        # ✨ Animatie op hover
-        animation = QPropertyAnimation(button, b"graphicsEffect.opacity")
-        animation.setDuration(200)
-        animation.setStartValue(0.95)
-        animation.setEndValue(1.0)
-        animation.setEasingCurve(QEasingCurve.InOutQuad)
-        animation.start()
-        button.animation = animation  # voorkomen dat garbage collection het verwijdert
-    
-   
