@@ -1,25 +1,21 @@
 [
   {
-    "id": "1",
-    "name": "Senior Python Developer",
-    "category": "Development",
-    "description": "Expert in schaalbare Python-applicaties.",
+    "id": "11111",
+    "name": "3D Print engineers",
+    "category": "3D",
+    "description": "Test voor 3D print persona beschrijving",
     "tags": [
-      "python",
-      "api",
-      "backend"
+      "3D",
+      "engineer"
     ],
     "is_favorite": false
   },
   {
-    "id": "2",
-    "name": "3D Print Engineer",
-    "category": "Engineering",
-    "description": "Gespecialiseerd in 3D-modellering en slicing.",
+    "id": "c84b2abe-3379-4c47-9e52-bef69d5ac8da",
+    "name": "test",
+    "category": "test",
+    "description": "test",
     "tags": [
-      "3d",
-      "engineering",
-      "fusion360",
       "test"
     ],
     "is_favorite": false

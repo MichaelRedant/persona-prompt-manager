@@ -18,6 +18,7 @@ from ui.prompt_generator import generate_prompt
 from ui.prompt_preview_dialog import PromptPreviewDialog
 from ui.prompt_wizard import PromptWizardDialog
 
+
 import json
 import os
 import webbrowser
@@ -404,6 +405,16 @@ class MainWindow(QMainWindow):
         self.update_moodchip_tooltip()
 
 
+    def save_personas(self):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        db_path = os.path.join(base_dir, "storage", "db.json")
+        try:
+            with open(db_path, "w", encoding="utf-8") as f:
+                json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            QMessageBox.critical(self, "Fout bij opslaan", f"Kon persona's niet opslaan:\n{e}")
+
+
 
 
     def load_prompts(self):
@@ -428,6 +439,16 @@ class MainWindow(QMainWindow):
                 "🚫 Fout bij het inlezen van 'prompts.json'. Controleer de opmaak.")
             self.prompts = []
             self.tag_panel.update_tags(self.personas, self.prompts)
+
+    def save_prompts(self):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+        try:
+            with open(prompts_path, "w", encoding="utf-8") as f:
+                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            QMessageBox.critical(self, "Fout bij opslaan", f"Kon prompts niet opslaan:\n{e}")
+
             
 
     def display_persona_details(self, index):
@@ -544,8 +565,13 @@ class MainWindow(QMainWindow):
     def add_prompt(self):
         selected_persona = None
         persona_index = self.persona_list.currentRow()
-        if 0 <= persona_index < len(self.personas):
-            selected_persona = self.personas[persona_index]
+
+        if 0 <= persona_index < self.persona_list.count():
+            selected_persona = (
+                self.filtered_personas[persona_index]
+                if hasattr(self, 'filtered_personas') and self.filtered_personas
+                else self.personas[persona_index]
+            )
 
         dialog = PromptForm(
             self,
@@ -563,16 +589,15 @@ class MainWindow(QMainWindow):
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             prompts_path = os.path.join(base_dir, "storage", "prompts.json")
 
-            with open(prompts_path, "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
+            self.save_prompts()
 
+            # Toon opnieuw de juiste persona details
             if selected_persona:
-                self.display_persona_details(persona_index)
+                match_index = next((i for i, p in enumerate(self.personas) if p.id == selected_persona.id), -1)
+                if match_index != -1:
+                    self.display_persona_details(match_index)
 
-            # Tags bijwerken
             self.tag_panel.update_tags(self.personas, self.prompts)
-
-
 
 
     def edit_prompt(self):
@@ -599,11 +624,21 @@ class MainWindow(QMainWindow):
         )
 
         if dialog.exec():
+            updated_prompt = dialog.get_prompt()
+            if not updated_prompt:
+                return
+
+            # ✅ Vervang de oude prompt door de nieuwe
+            for i, p in enumerate(self.prompts):
+                if p.id == updated_prompt.id:
+                    self.prompts[i] = updated_prompt
+                    break
+
+            # ✅ Schrijf weg
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             prompts_path = os.path.join(base_dir, "storage", "prompts.json")
 
-            with open(prompts_path, "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
+            self.save_prompts()
 
             self.display_persona_details(self.persona_list.currentRow())
             self.tag_panel.update_tags(self.personas, self.prompts)
@@ -635,13 +670,11 @@ class MainWindow(QMainWindow):
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             prompts_path = os.path.join(base_dir, "storage", "prompts.json")
 
-            with open(prompts_path, "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
+            self.save_prompts()
 
+            self.display_persona_details(self.persona_list.currentRow())
 
-                self.display_persona_details(self.persona_list.currentRow())
-
-        self.tag_panel.update_tags(self.personas, self.prompts)
+            self.tag_panel.update_tags(self.personas, self.prompts)
 
 
     def copy_prompt(self):
@@ -667,21 +700,18 @@ class MainWindow(QMainWindow):
 
         if result == 1:
             persona_form = PersonaForm(self, persona=None, template_mode=False)
+            if persona_form.exec():
+                new_persona = persona_form.get_persona()
+                self.personas.append(new_persona)
+                self.save_personas()
+                self.refresh_persona_list()
+                self.update_status_chip()
+                self.update_moodchip_tooltip()
+                self.tag_panel.update_tags(self.personas, self.prompts)
+
         elif result == 2:
-            persona_form = PersonaForm(self, persona=None, template_mode=True)
-        else:
-            return  # geannuleerd
-
-        if persona_form.exec():
-            new_persona = persona_form.get_persona()
-            self.personas.append(new_persona)
-            self.save_personas()
-            self.refresh_persona_list()
-            self.update_status_chip()
-            self.update_moodchip_tooltip()
-            self.tag_panel.update_tags(self.personas, self.prompts)
-
-
+            wizard = PromptWizardDialog(self)
+            wizard.exec()
 
 
 
@@ -689,7 +719,7 @@ class MainWindow(QMainWindow):
         index = self.persona_list.currentRow()
         if index < 0:
             return
-        persona = self.personas[index]
+        persona = self.filtered_personas[index] if hasattr(self, 'filtered_personas') else self.personas[index]
         dialog = PersonaForm(self, persona)
         if dialog.exec():
             updated = dialog.get_persona()
@@ -708,14 +738,14 @@ class MainWindow(QMainWindow):
         index = self.persona_list.currentRow()
         if index < 0:
             return
-        persona = self.personas[index]
+        persona = self.filtered_personas[index] if hasattr(self, 'filtered_personas') else self.personas[index]
         reply = QMessageBox.question(
             self, "Bevestigen",
             f"Ben je zeker dat je '{persona.name}' wilt verwijderen?",
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            del self.personas[index]
+            self.personas = [p for p in self.personas if p.id != persona.id]
             with open("storage/db.json", "w", encoding="utf-8") as f:
                 json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
             self.refresh_persona_list()

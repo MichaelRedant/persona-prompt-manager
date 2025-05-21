@@ -1,6 +1,8 @@
+# ui/persona_form.py
+
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QPushButton,
-    QHBoxLayout, QMessageBox, QScrollArea, QWidget
+    QDialog, QVBoxLayout, QLabel, QLineEdit, QTextEdit,
+    QPushButton, QHBoxLayout, QComboBox, QListWidget, QListWidgetItem
 )
 from PySide6.QtCore import Qt
 from models.persona import Persona
@@ -9,120 +11,100 @@ import uuid
 class PersonaForm(QDialog):
     def __init__(self, parent=None, persona=None, template_mode=False):
         super().__init__(parent)
-        self.setWindowTitle("🧠 Persona aanmaken" if persona is None else "✏️ Persona bewerken")
-        self.setMinimumSize(800, 700)
+        self.setWindowTitle("➕ Nieuwe Persona")
+        self.setMinimumSize(800, 600)
+        self.setStyleSheet("""
+            QDialog { background-color: #f8fafc; }
+            QLabel, QLineEdit, QTextEdit {
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 14px;
+            }
+            QLineEdit, QTextEdit {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QPushButton {
+                background-color: #4f46e5;
+                color: white;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #4338ca;
+            }
+        """)
+
         self.persona = persona
         self.template_mode = template_mode
-        self.persona = persona
 
-        self.sections = [
-            "Algemene Beschrijving",
-            "Belangrijkste Werkzaamheden & Workflows",
-            "Sectorgerichte Toepassingen",
-            "Jargon & Technieken",
-            "Gedragskenmerken & Profiel",
-            "Doelen & Succescriteria",
-            "Interactie & Samenwerking",
-            "Tools & Software",
-            "Typische Uitdagingen & Oplossingen",
-            "Hoe deze GPT zou reageren",
-            "Structuur en Datavisualisatie",
-            "Vermijden van Onduidelijkheid",
-            "Follow-up Vragen",
-            "Samenvatting van de GPT-Stijl"
-        ]
+        layout = QVBoxLayout(self)
 
-        # Scrollbare layout
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_content = QWidget()
-        self.form_layout = QVBoxLayout(scroll_content)
+        title = QLabel("🧠 Voeg een nieuwe persona toe")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1e3a8a; margin-bottom: 24px;")
+        layout.addWidget(title)
 
-        # Basisvelden
         self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Naam van de persona")
+
         self.category_input = QLineEdit()
+        self.category_input.setPlaceholderText("Categorie of rol")
+
+        self.description_input = QTextEdit()
+        self.description_input.setPlaceholderText("Beschrijf deze persona...")
+
         self.tags_input = QLineEdit()
-        self.form_layout.addWidget(QLabel("Naam *"))
-        self.form_layout.addWidget(self.name_input)
-        self.form_layout.addWidget(QLabel("Categorie"))
-        self.form_layout.addWidget(self.category_input)
-        self.form_layout.addWidget(QLabel("Tags (gescheiden door komma's)"))
-        self.form_layout.addWidget(self.tags_input)
+        self.tags_input.setPlaceholderText("Tags (komma-gescheiden, bv: creatief, ux, seo)")
 
-        self.section_inputs = {}
+        layout.addWidget(QLabel("🔤 Naam"))
+        layout.addWidget(self.name_input)
+        layout.addWidget(QLabel("🏷️ Categorie"))
+        layout.addWidget(self.category_input)
+        layout.addWidget(QLabel("📝 Beschrijving"))
+        layout.addWidget(self.description_input)
+        layout.addWidget(QLabel("🔖 Tags"))
+        layout.addWidget(self.tags_input)
 
-        if self.persona is None and self.template_mode:
-            # 14 secties tonen
-            for section in self.sections:
-                label = QLabel(section)
-                input_field = QTextEdit()
-                input_field.setPlaceholderText(f"Voer hier {section.lower()} in...")
-                self.form_layout.addWidget(label)
-                self.form_layout.addWidget(input_field)
-                self.section_inputs[section] = input_field
-        else:
-            # Vrije beschrijving (zowel blanco als bewerken)
-            self.description_input = QTextEdit()
-            self.form_layout.addWidget(QLabel("Beschrijving"))
-            self.form_layout.addWidget(self.description_input)
+        btns = QHBoxLayout()
+        save_btn = QPushButton("💾 Opslaan")
+        cancel_btn = QPushButton("❌ Annuleren")
+        save_btn.clicked.connect(self.accept)
+        cancel_btn.clicked.connect(self.reject)
+        btns.addStretch()
+        btns.addWidget(cancel_btn)
+        btns.addWidget(save_btn)
 
-        # Knoppen
-        button_layout = QHBoxLayout()
-        self.save_button = QPushButton("💾 Opslaan")
-        self.cancel_button = QPushButton("Annuleren")
-        button_layout.addWidget(self.save_button)
-        button_layout.addWidget(self.cancel_button)
-        self.form_layout.addLayout(button_layout)
+        layout.addSpacing(12)
+        layout.addLayout(btns)
 
-        # Afsluiten
-        scroll_area.setWidget(scroll_content)
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(scroll_area)
-        self.setLayout(main_layout)
+        # Indien bewerken: velden vooraf invullen
+        if persona:
+            self.name_input.setText(persona.name)
+            self.category_input.setText(persona.category)
+            self.description_input.setPlainText(persona.description)
+            self.tags_input.setText(", ".join(persona.tags))
 
-        # Indien bewerken, velden invullen
-        if self.persona:
-            self.name_input.setText(self.persona.name)
-            self.category_input.setText(self.persona.category)
-            self.tags_input.setText(", ".join(self.persona.tags))
-            self.description_input.setPlainText(self.persona.description)
-
-        # Events
-        self.save_button.clicked.connect(self.accept)
-        self.cancel_button.clicked.connect(self.reject)
-
-    def accept(self):
-        name = self.name_input.text().strip()
-        if not name:
-            QMessageBox.warning(self, "Validatie", "Naam is verplicht.")
-            return
-
-        tags = [t.strip() for t in self.tags_input.text().split(",") if t.strip()]
-
-        if self.persona:
-            # ✏️ Bijwerken
-            self.persona.name = name
-            self.persona.category = self.category_input.text().strip()
-            self.persona.tags = tags
-            self.persona.description = self.description_input.toPlainText()
-        else:
-            # ➕ Nieuw: combineer secties
-            sections_text = []
-            for title in self.sections:
-                content = self.section_inputs[title].toPlainText().strip()
-                if content:
-                    sections_text.append(f"### {title}\n\n{content}")
-            full_description = "\n\n".join(sections_text)
-
-            self.persona = Persona(
-                id=str(uuid.uuid4()),
-                name=name,
-                category=self.category_input.text().strip(),
-                tags=tags,
-                description=full_description
-            )
-
-        super().accept()
 
     def get_persona(self):
-        return self.persona
+        name = self.name_input.text().strip()
+        category = self.category_input.text().strip()
+        description = self.description_input.toPlainText().strip()
+        tags = [t.strip() for t in self.tags_input.text().split(",") if t.strip()]
+    
+        if not name or not category or not description:
+            return None
+    
+        persona_id = self.persona.id if self.persona else str(uuid.uuid4())
+    
+        return Persona(
+            id=persona_id,
+            name=name,
+            category=category,
+            description=description,
+            tags=tags
+        )
+
