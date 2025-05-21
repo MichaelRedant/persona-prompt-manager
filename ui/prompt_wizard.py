@@ -2,9 +2,10 @@
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QTextEdit, QPushButton,
-    QTabWidget, QWidget, QApplication, QHBoxLayout
+    QTabWidget, QWidget, QApplication, QHBoxLayout, QMessageBox
 )
 from PySide6.QtCore import Qt
+from logic.ollama_helper import generate_suggestion
 
 
 class WizardTab(QWidget):
@@ -18,7 +19,6 @@ class WizardTab(QWidget):
         title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 4px;")
         layout.addWidget(title_label)
 
-        # Helpvragen als label erboven
         if questions:
             help_text = "\n".join(f"• {q}" for q in questions)
             help_label = QLabel(help_text)
@@ -39,6 +39,12 @@ class WizardTab(QWidget):
         """)
         layout.addWidget(self.text)
 
+        # Suggestieknop toevoegen
+        suggest_btn = QPushButton("💡 Genereer AI-suggestie")
+        suggest_btn.setStyleSheet("background-color: #10b981;")
+        suggest_btn.clicked.connect(self.get_ai_suggestion)
+        layout.addWidget(suggest_btn)
+
         # Navigatieknoppen onderaan
         btns = QHBoxLayout()
         if index > 0:
@@ -50,6 +56,16 @@ class WizardTab(QWidget):
         next_btn.clicked.connect(self.go_next)
         btns.addWidget(next_btn)
         layout.addLayout(btns)
+        
+    def get_ai_suggestion(self):
+        user_input = self.text.toPlainText().strip()
+        if not user_input:
+            QMessageBox.information(self, "Geen input", "Geef eerst een beginput in voor de suggestie.")
+            return
+
+        prompt = f"Maak dit persona-gedeelte af in professionele stijl:\n\n{user_input}"
+        suggestion = generate_suggestion(prompt)
+        self.text.append("\n" + suggestion)
 
     def go_next(self):
         if self.index + 1 < self.parent_wizard.tabs.count():
@@ -59,7 +75,7 @@ class WizardTab(QWidget):
 
     def go_prev(self):
         if self.index - 1 >= 0:
-            self.parent_wizard.tabs.setCurrentIndex(self.index - 1)
+            self.parent_wizard.tabs.setCurrentIndex(self.index - 1)    
 
 
 class PromptWizardDialog(QDialog):
