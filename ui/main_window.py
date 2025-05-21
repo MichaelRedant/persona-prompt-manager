@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QListWidget, QTextEdit, QVBoxLayout, QHBoxLayout,
     QWidget, QLabel, QListWidgetItem, QPushButton, QMessageBox,
-    QApplication, QFrame, QLineEdit, QScrollArea, QFileDialog, QGraphicsDropShadowEffect, QSizePolicy, QSystemTrayIcon, QMenu, QGraphicsOpacityEffect
+    QApplication, QFrame, QDialog, QLineEdit, QScrollArea, QFileDialog, QGraphicsDropShadowEffect, QSizePolicy, QSystemTrayIcon, QMenu, QGraphicsOpacityEffect
 )
 from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer
@@ -14,7 +14,9 @@ from ui.tag_filter_panel import TagFilterPanel
 from datetime import datetime
 from ui.ai_mood import determine_ai_mood
 from collections import Counter
-
+from ui.prompt_generator import generate_prompt
+from ui.prompt_preview_dialog import PromptPreviewDialog
+from ui.prompt_wizard import PromptWizardDialog
 
 import json
 import os
@@ -41,7 +43,8 @@ class MainWindow(QMainWindow):
         self.is_dark_mode = False
     
         # Tray
-        self.tray_icon = QSystemTrayIcon(QIcon("assets/icon.ico"), self)
+        self.tray_icon = QSystemTrayIcon(QIcon(icon_path), self)
+
         self.tray_icon.setToolTip("Persona Vault")
         tray_menu = QMenu()
         tray_menu.addAction("Sluiten", self.close)
@@ -215,6 +218,9 @@ class MainWindow(QMainWindow):
                 background-color: #4338ca;
             }
         """)
+        
+        
+        
         self.prompt_info_label = QLabel()
         self.prompt_info_label.setStyleSheet("font-size: 12px; color: #6b7280;")
         self.prompt_info_label.setWordWrap(True)
@@ -238,14 +244,38 @@ class MainWindow(QMainWindow):
                 background-color: #15803d;
             }
         """)
-    
+        # ➕ Genereer Prompt-knop
+        self.generate_prompt_button = QPushButton("🎛️ Genereer Prompt")
+        self.generate_prompt_button.clicked.connect(self.open_prompt_wizard)
+        self.generate_prompt_button.setCursor(Qt.PointingHandCursor)
+        self.generate_prompt_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0ea5e9;
+                color: white;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #0284c7;
+            }
+        """)
+
         test_button_box = QVBoxLayout()
         test_button_box.setSpacing(10)
+
         test_button_box.addWidget(self.copy_prompt_button)
         test_button_box.addWidget(self.prompt_info_label)
         test_button_box.addWidget(self.prompt_tip_label)
-        test_button_box.addStretch()
+
+        # ➕ Voeg Genereer Prompt-knop toe vóór de Test-knop
+        test_button_box.addWidget(self.generate_prompt_button)
         test_button_box.addWidget(self.try_prompt_button)
+
+        test_button_box.addStretch()
+
         test_card = QFrame()
         test_card.setLayout(test_button_box)
         test_card.setStyleSheet("background-color: transparent;")
@@ -282,6 +312,7 @@ class MainWindow(QMainWindow):
         prompt_btns.addWidget(self.add_prompt_button)
         prompt_btns.addWidget(self.edit_prompt_button)
         prompt_btns.addWidget(self.delete_prompt_button)
+       
     
         # Layout opbouw
         layout.setContentsMargins(24, 24, 24, 24)
@@ -1181,4 +1212,95 @@ class MainWindow(QMainWindow):
         """
         button.setStyleSheet(normal_style)
         
+    def open_prompt_wizard(self):
+        wizard = PromptWizardDialog(self)
+        wizard.exec()    
+        
+    def show_prompt_preview(self):
+        # Stap 1: Haal geselecteerde persona
+        index = self.persona_list.currentRow()
+        if index < 0 or not hasattr(self, 'filtered_personas'):
+            QMessageBox.information(self, "Geen selectie", "Selecteer eerst een persona.")
+            return
+
+        persona = self.filtered_personas[index]
+
+        # Stap 2: Genereer prompt
+        from ui.prompt_generator import generate_prompt
+        generated = generate_prompt(persona)
+
+        # Stap 3: Toon in modale dialoog
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"🎛️ Gegenereerde Prompt voor {persona.name}")
+        dlg.setMinimumSize(700, 500)
+
+        layout = QVBoxLayout(dlg)
+
+        # Prompt Preview
+        preview = QTextEdit()
+        preview.setReadOnly(True)
+        preview.setText(generated)
+        preview.setStyleSheet("""
+            QTextEdit {
+                font-size: 14px;
+                background-color: #f9fafb;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        layout.addWidget(preview)
+
+        # Kopieerknop
+        copy_btn = QPushButton("📋 Kopieer prompt")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(generated))
+        layout.addWidget(copy_btn)
+
+        # Sluitknop
+        close_btn = QPushButton("❌ Sluiten")
+        close_btn.clicked.connect(dlg.accept)
+        layout.addWidget(close_btn)
+
+        dlg.setLayout(layout)
+        dlg.exec()
+
     
+        
+    def preview_generated_from_prompt(self):
+        current_item = self.prompt_list.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "Selecteer een prompt", "Selecteer een prompt om de gegenereerde versie te bekijken.")
+            return
+
+        prompt_id = current_item.data(Qt.UserRole)
+        prompt = next((p for p in self.prompts if p.id == prompt_id), None)
+        if not prompt:
+            QMessageBox.warning(self, "Fout", "Kon de prompt niet laden.")
+            return
+
+        # Bijhorende persona zoeken
+        persona = next((p for p in self.personas if p.id == prompt.persona_id), None)
+        if not persona:
+            QMessageBox.warning(self, "Geen persona", "Deze prompt is niet gekoppeld aan een geldige persona.")
+            return
+
+        # Prompt genereren
+        generated = generate_prompt(persona)
+
+        # Toon in dialoog
+        dlg = QDialog(self)
+        dlg.setWindowTitle("🎛️ Gegenereerde Prompt")
+        dlg.setMinimumSize(700, 500)
+        layout = QVBoxLayout()
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setText(generated)
+        layout.addWidget(text)
+
+        # Knop om te kopiëren
+        copy_btn = QPushButton("📋 Kopieer naar klembord")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(generated))
+        layout.addWidget(copy_btn)
+
+        dlg.setLayout(layout)
+        dlg.exec()
