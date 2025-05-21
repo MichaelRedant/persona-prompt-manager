@@ -1,41 +1,25 @@
 [
   {
-    "id": "9066ee06-7bbb-4bd2-bde6-a770c83d27ea",
-    "persona_id": "1",
-    "title": "3D print engineer",
-    "content": "test voor een 3D promt prompt",
+    "id": "f74b1d72-378c-4820-aafb-9149f7e9f301",
+    "persona_id": "3f1a8570-8a7a-4df6-a1c3-e804d1f7b301",
+    "title": "Calibreer 3D printer instellingen",
+    "content": "Je bent een ervaren 3D print engineer. Leg stap voor stap uit hoe je een FDM-printer kalibreert voor PETG.",
     "tags": [
-      "3D"
+      "PETG",
+      "calibratie",
+      "3D print"
     ],
-    "last_used": ""
+    "last_used": "2025-05-22 13:00:00"
   },
   {
-    "id": "8c26423f-aa51-4f53-92df-54a164f78d6f",
-    "persona_id": "1",
-    "title": "test",
-    "content": "testtttttt",
+    "id": "c93e1424-42a7-463e-bfd1-4e829d248c61",
+    "persona_id": "e2a45690-b9fa-4d66-bbb8-72c6c1e3a5a1",
+    "title": "Python API genereren",
+    "content": "Je bent een senior Python backend developer. Schrijf een FastAPI endpoint voor een product catalogus en snel!",
     "tags": [
-      "testtt"
-    ],
-    "last_used": ""
-  },
-  {
-    "id": "805a03fb-9269-4b44-90ad-8aa82819bacf",
-    "persona_id": "11111",
-    "title": "test",
-    "content": "tessssst",
-    "tags": [
-      "test"
-    ],
-    "last_used": ""
-  },
-  {
-    "id": "455ef3b3-9cc3-4ea7-bd99-f01424b3f376",
-    "persona_id": "c84b2abe-3379-4c47-9e52-bef69d5ac8da",
-    "title": "tesss",
-    "content": "ttttttttttttttttttttttttttttttttttttttteeeeeeeeeeeeeeeeeeeeeeeeeeeesssssssssssssssssssssssssssssstttttttttttttttttttttttt",
-    "tags": [
-      "test"
+      "fastapi",
+      "backend",
+      "json"
     ],
     "last_used": ""
   }

@@ -17,6 +17,9 @@ from collections import Counter
 from ui.prompt_generator import generate_prompt
 from ui.prompt_preview_dialog import PromptPreviewDialog
 from ui.prompt_wizard import PromptWizardDialog
+from services.persona_store import PersonaStore
+from services.prompt_store import PromptStore
+
 
 
 import json
@@ -354,100 +357,77 @@ class MainWindow(QMainWindow):
         self.click_catcher.lower()
     
         # Data
-        self.load_prompts()
-        self.load_personas()
+         # ✅ Services initialiseren
+        self.persona_store = PersonaStore()
+        self.prompt_store = PromptStore()
+
+        # ✅ Data laden
+        self.load_data()
+
+        # ✅ UI updaten
         self.update_status_chip()
         self.update_moodchip_tooltip()
+
+        # ✅ Laatste visuele updates
+        self.showMaximized()
     
         # Button Effects (zorg dat deze functie bestaat!)
         self.apply_button_effects(self.copy_prompt_button, "#4f46e5", "#4338ca")
         self.apply_button_effects(self.try_prompt_button, "#16a34a", "#15803d")
-    
-        self.showMaximized()
 
 
-        
+
+    def load_data(self):
+           try:
+               self.personas = self.persona_store.load()
+           except Exception as e:
+               QMessageBox.critical(self, "Fout bij laden persona's", str(e))
+               self.personas = []
+
+           try:
+               self.prompts = self.prompt_store.load()
+           except Exception as e:
+               QMessageBox.critical(self, "Fout bij laden prompts", str(e))
+               self.prompts = []
+
+           self.refresh_persona_list()
+           self.update_persona_title()
+           self.tag_panel.update_tags(self.personas, self.prompts)
+           self.update_status_chip()
+           self.update_moodchip_tooltip()
+
+           # ⚙️ Selecteer eerste persona (indien aanwezig)
+           if self.persona_list.count() > 0:
+               self.persona_list.setCurrentRow(0)
+               self.display_persona_details(0)
 
 
     def load_personas(self):
         try:
-            # Dynamisch pad naar JSON, werkt ook bij gebundelde .exe
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            db_path = os.path.join(base_dir, "storage", "db.json")
-
-            # JSON inlezen
-            with open(db_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            # Data laden in objecten
-            self.personas = [Persona.from_dict(item) for item in data]
-
-        except FileNotFoundError:
-            QMessageBox.warning(self, "Bestand niet gevonden",
-                                "⚠️ Het bestand 'storage/db.json' werd niet gevonden.")
+            self.personas = self.persona_store.load()
+        except RuntimeError as e:
+            QMessageBox.critical(self, "Fout bij laden", str(e))
             self.personas = []
 
-        except json.JSONDecodeError:
-            QMessageBox.critical(self, "JSON-fout",
-                                "🚫 Fout bij het inlezen van 'db.json'. Controleer de opmaak.")
-            self.personas = []
-
-        except Exception as e:
-            QMessageBox.critical(self, "Onverwachte fout",
-                                f"❌ Er is een fout opgetreden bij het laden van de persona's:\n{e}")
-            self.personas = []
-
-        # UI bijwerken
+       # UI bijwerken
         self.refresh_persona_list()
         self.update_persona_title()
         self.tag_panel.update_tags(self.personas, self.prompts)
         self.update_status_chip()
         self.update_moodchip_tooltip()
 
-
-    def save_personas(self):
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        db_path = os.path.join(base_dir, "storage", "db.json")
-        try:
-            with open(db_path, "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            QMessageBox.critical(self, "Fout bij opslaan", f"Kon persona's niet opslaan:\n{e}")
+        # FIX: selecteer eerste persona om prompts te tonen
+        if self.persona_list.count() > 0:
+            self.persona_list.setCurrentRow(0)
+            self.display_persona_details(0)
 
 
-
-
-    def load_prompts(self):
-        try:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
-
-            if not os.path.exists(prompts_path):
-                self.prompts = []
-                return
-
-            with open(prompts_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if not content:
-                    self.prompts = []
-                    return
-                data = json.loads(content)
-                self.prompts = [Prompt.from_dict(item) for item in data]
-
-        except json.JSONDecodeError:
-            QMessageBox.critical(self, "JSON-fout",
-                "🚫 Fout bij het inlezen van 'prompts.json'. Controleer de opmaak.")
-            self.prompts = []
-            self.tag_panel.update_tags(self.personas, self.prompts)
 
     def save_prompts(self):
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        prompts_path = os.path.join(base_dir, "storage", "prompts.json")
         try:
-            with open(prompts_path, "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.prompts], f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            QMessageBox.critical(self, "Fout bij opslaan", f"Kon prompts niet opslaan:\n{e}")
+            self.prompt_store.save(self.prompts)
+        except RuntimeError as e:
+            QMessageBox.critical(self, "Fout bij opslaan", str(e))
 
             
 
@@ -544,22 +524,26 @@ class MainWindow(QMainWindow):
 
     def refresh_persona_list(self):
         self.persona_list.clear()
-        self.no_personas_label.setVisible(self.persona_list.count() == 0)
-        self.update_persona_title()
-
-
-
-    # Sorteer favorieten eerst, dan alfabetisch
+        self.no_personas_label.setVisible(False)
+    
         self.filtered_personas = sorted(
             self.personas,
             key=lambda p: (not p.is_favorite, p.name.lower())
         )
-
+    
         for persona in self.filtered_personas:
             label = f"⭐ {persona.name}" if persona.is_favorite else f"☆ {persona.name}"
             item = QListWidgetItem(label)
             self.persona_list.addItem(item)
-            self.no_personas_label.setVisible(len(self.filtered_personas) == 0)
+    
+        self.no_personas_label.setVisible(len(self.filtered_personas) == 0)
+    
+        # 👇 Voeg dit toe om bij opstart automatisch de eerste te tonen
+        if self.filtered_personas:
+            self.persona_list.setCurrentRow(0)
+            self.display_persona_details(0)
+
+
 
 
     def add_prompt(self):
@@ -586,10 +570,8 @@ class MainWindow(QMainWindow):
 
             self.prompts.append(new_prompt)
 
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+            self.prompt_store.save(self.prompts)
 
-            self.save_prompts()
 
             # Toon opnieuw de juiste persona details
             if selected_persona:
@@ -635,10 +617,8 @@ class MainWindow(QMainWindow):
                     break
 
             # ✅ Schrijf weg
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
+            self.prompt_store.save(self.prompts)
 
-            self.save_prompts()
 
             self.display_persona_details(self.persona_list.currentRow())
             self.tag_panel.update_tags(self.personas, self.prompts)
@@ -667,10 +647,7 @@ class MainWindow(QMainWindow):
         if confirm == QMessageBox.StandardButton.Yes:
             self.prompts = [p for p in self.prompts if p.id != selected_prompt.id]
 
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            prompts_path = os.path.join(base_dir, "storage", "prompts.json")
-
-            self.save_prompts()
+            self.prompt_store.save(self.prompts)
 
             self.display_persona_details(self.persona_list.currentRow())
 
@@ -703,7 +680,7 @@ class MainWindow(QMainWindow):
             if persona_form.exec():
                 new_persona = persona_form.get_persona()
                 self.personas.append(new_persona)
-                self.save_personas()
+                self.persona_store.save(self.personas)
                 self.refresh_persona_list()
                 self.update_status_chip()
                 self.update_moodchip_tooltip()
@@ -724,8 +701,7 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             updated = dialog.get_persona()
             self.personas[index] = updated
-            with open("storage/db.json", "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
+            self.persona_store.save(self.personas)
             self.refresh_persona_list()
             self.update_status_chip()
             self.update_moodchip_tooltip()
@@ -746,8 +722,7 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.Yes:
             self.personas = [p for p in self.personas if p.id != persona.id]
-            with open("storage/db.json", "w", encoding="utf-8") as f:
-                json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
+            self.persona_store.save(self.personas)
             self.refresh_persona_list()
             self.update_status_chip()
             self.update_moodchip_tooltip()
@@ -870,8 +845,8 @@ class MainWindow(QMainWindow):
         persona.is_favorite = not persona.is_favorite
 
     # Opslaan
-        with open("storage/db.json", "w", encoding="utf-8") as f:
-            json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
+        self.persona_store.save(self.personas)
+
 
         self.refresh_persona_list()
         
@@ -884,8 +859,8 @@ class MainWindow(QMainWindow):
         persona.is_favorite = not persona.is_favorite
 
     # Opslaan
-        with open("storage/db.json", "w", encoding="utf-8") as f:
-            json.dump([p.to_dict() for p in self.personas], f, indent=2, ensure_ascii=False)
+        self.persona_store.save(self.personas)
+
 
         self.refresh_persona_list()
 
@@ -952,7 +927,7 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             new_persona = dialog.get_persona()
             self.personas.append(new_persona)
-            self.save_personas()
+            self.persona_store.save(self.personas)
             self.refresh_persona_list()
 
     def add_template_persona(self):
@@ -961,7 +936,7 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             new_persona = dialog.get_persona()
             self.personas.append(new_persona)
-            self.save_personas()
+            self.persona_store.save(self.personas)
             self.refresh_persona_list()
 
     def filter_by_tag(self, tag):
