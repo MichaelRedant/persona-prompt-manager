@@ -60,7 +60,9 @@ class PersonaCard(QFrame):
         layout.addWidget(self.favorite_btn, alignment=Qt.AlignRight)
 
     def mousePressEvent(self, event):
-        self.clicked.emit(self.index)
+       self.clicked.emit(self.index)
+       event.accept()  # voorkomt verder bubbling naar bovenliggende handlers
+
 
     def toggle_favorite(self):
         self.toggled_favorite.emit(self.index)

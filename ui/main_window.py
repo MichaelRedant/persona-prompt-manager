@@ -20,6 +20,7 @@ from ui.prompt_wizard import PromptWizardDialog
 from services.persona_store import PersonaStore
 from services.prompt_store import PromptStore
 from ui.persona_dashboard import PersonaDashboard
+from ui.prompt_dashboard import PromptDashboard
 
 
 
@@ -161,11 +162,11 @@ class MainWindow(QMainWindow):
 
     
         # Prompt UI
-        self.prompt_list = QListWidget()
+        self.prompt_dashboard = PromptDashboard(self)
         self.no_prompts_label = QLabel("Geen prompts gevonden.")
         self.no_prompts_label.setAlignment(Qt.AlignCenter)
         self.no_prompts_label.hide()
-        prompt_card_widget = self.wrap_in_card(self.prompt_list, "💡 Prompts")
+        prompt_card_widget = self.wrap_in_card(self.prompt_dashboard, "💡 Prompts")
         prompt_wrapper = QVBoxLayout()
         prompt_wrapper.addWidget(self.no_prompts_label)
         prompt_wrapper.addWidget(prompt_card_widget)
@@ -326,7 +327,7 @@ class MainWindow(QMainWindow):
         # Events
         self.persona_dashboard.persona_selected.connect(self.display_persona_details)
         self.persona_dashboard.favorite_toggled.connect(self.toggle_favorite)
-        self.prompt_list.itemSelectionChanged.connect(lambda: self.display_prompt_details(self.prompt_list.currentRow()))
+        self.prompt_dashboard.prompt_selected.connect(self.display_prompt_details)
         self.search_input.textChanged.connect(self.perform_search)
         self.add_prompt_button.clicked.connect(self.add_prompt)
         self.edit_prompt_button.clicked.connect(self.edit_prompt)
@@ -339,7 +340,7 @@ class MainWindow(QMainWindow):
         self.persona_dashboard.persona_selected.connect(self.display_persona_details)
         self.persona_dashboard.persona_selected.connect(self.check_selection_state)
 
-        self.prompt_list.itemSelectionChanged.connect(self.check_selection_state)
+        self.prompt_dashboard.prompt_selected.connect(self.check_selection_state)
     
         self.click_catcher = ClickCatcherFrame(self, self.clear_selections)
         self.click_catcher.setGeometry(self.rect())
@@ -426,9 +427,9 @@ class MainWindow(QMainWindow):
 
     def display_persona_details(self, index):
         if not hasattr(self, 'filtered_personas') or index < 0 or index >= len(self.filtered_personas):
-            # ❌ Ongeldige index, toon leeg
             self.details_box.clear()
-            self.prompt_list.clear()
+            self.prompt_dashboard.clear()
+            self.refresh_prompt_list()
             self.prompt_details_box.clear()
             self.edit_persona_button.hide()
             self.delete_persona_button.hide()
@@ -440,7 +441,6 @@ class MainWindow(QMainWindow):
             self.favorite_button.show()
             return
 
-        # ✅ Geldige index
         persona = self.filtered_personas[index]
         self.details_box.setPlainText(
             f"🔹 Naam: {persona.name}\n"
@@ -451,72 +451,62 @@ class MainWindow(QMainWindow):
         self.edit_persona_button.show()
         self.delete_persona_button.show()
 
-        self.prompt_list.clear()
         related_prompts = [p for p in self.prompts if p.persona_id == persona.id]
-        for prompt in related_prompts:
-            item = QListWidgetItem(prompt.title)
-            item.setData(Qt.UserRole, prompt.id)
-            self.prompt_list.addItem(item)
+        self.prompt_dashboard.load_prompts(related_prompts)
+        self.filtered_prompts = related_prompts
+        self.prompt_dashboard.select_first()
 
-        if self.prompt_list.count() > 0:
-            self.prompt_list.setCurrentRow(0)
-            self.display_prompt_details(0)
         
 
     def display_prompt_details(self, index):
-        if index >= 0:
-            item = self.prompt_list.item(index)
-            prompt_id = item.data(Qt.UserRole)
-            prompt = next((p for p in self.prompts if p.id == prompt_id), None)
-
-            if prompt:
-                self.edit_prompt_button.show()
-                self.delete_prompt_button.show()
-                self.copy_prompt_button.show()
-                persona = next((p for p in self.personas if p.id == prompt.persona_id), None)
-                persona_name = persona.name if persona else "Ongekend"
-                length = len(prompt.content)
-                self.prompt_info_label.setText(
-                    f"🔗 Koppeling: <b>{persona_name}</b> · 📏 Lengte: {length} tekens · 🕒 Laatst gebruikt: {prompt.last_used}"
-                )
-
-                # Dynamische tips (optioneel randomiseren)
-                tips = [
-    "💡 Tip: Start prompts met een duidelijke rol, zoals “Je bent een expert copywriter...”",
-    "💡 Tip: Wees specifiek over output: 'Geef me 3 opsommingen' i.p.v. 'Schrijf iets'",
-    "💡 Tip: Gebruik context: 'Je werkt voor een startup in gezondheidszorg...'",
-    "💡 Tip: Voeg beperkingen toe: 'Gebruik maximaal 100 woorden'",
-    "💡 Tip: Geef een format op: 'Antwoord in een lijst met emoji's'",
-    "💡 Tip: Vraag GPT om te denken: 'Denk stap voor stap na over dit probleem'",
-    "💡 Tip: Laat GPT zich verplaatsen in een rol: 'Je bent een recruiter die...'",
-    "💡 Tip: Voeg voorbeelddata toe in je prompt voor betere output",
-    "💡 Tip: Benoem wat je niet wilt: 'Vermijd overdreven technische termen'",
-    "💡 Tip: Gebruik tone of voice: 'Schrijf in een informele, enthousiaste stijl'",
-]
-
-                import random
-                self.prompt_tip_label.setText(random.choice(tips))
-                self.prompt_details_box.setPlainText(prompt.content)
-
-                persona = next((p for p in self.personas if p.id == prompt.persona_id), None)
-                if persona:
-                    self.details_box.setPlainText(
-                        f"🔹 Naam: {persona.name}\n"
-                        f"🔹 Categorie: {persona.category}\n"
-                        f"🔹 Tags: {', '.join(persona.tags)}\n\n"
-                        f"{persona.description}"
-                    )
-
-                self.prompt_metadata_label.setText(
-                    f"<i>{prompt.title}</i> · Tags: {', '.join(prompt.tags)} · Laatst gebruikt: {prompt.last_used}"
-                )
-        else:
-            self.edit_prompt_button.hide()
-            self.delete_prompt_button.hide()
-            self.copy_prompt_button.hide()
+        if not hasattr(self, 'filtered_prompts') or index < 0 or index >= len(self.filtered_prompts):
             self.prompt_details_box.clear()
             self.details_box.clear()
             self.prompt_metadata_label.clear()
+            self.edit_prompt_button.hide()
+            self.delete_prompt_button.hide()
+            self.copy_prompt_button.hide()
+            return
+    
+        prompt = self.filtered_prompts[index]
+    
+        self.edit_prompt_button.show()
+        self.delete_prompt_button.show()
+        self.copy_prompt_button.show()
+        persona = next((p for p in self.personas if p.id == prompt.persona_id), None)
+        persona_name = persona.name if persona else "Ongekend"
+        length = len(prompt.content)
+        self.prompt_info_label.setText(
+            f"🔗 Koppeling: <b>{persona_name}</b> · 📏 Lengte: {length} tekens · 🕒 Laatst gebruikt: {prompt.last_used}"
+        )
+    
+        tips = [
+            "💡 Tip: Start prompts met een duidelijke rol, zoals “Je bent een expert copywriter...”",
+            "💡 Tip: Wees specifiek over output: 'Geef me 3 opsommingen' i.p.v. 'Schrijf iets'",
+            "💡 Tip: Gebruik context: 'Je werkt voor een startup in gezondheidszorg...'",
+            "💡 Tip: Voeg beperkingen toe: 'Gebruik maximaal 100 woorden'",
+            "💡 Tip: Geef een format op: 'Antwoord in een lijst met emoji's'",
+            "💡 Tip: Vraag GPT om te denken: 'Denk stap voor stap na over dit probleem'",
+            "💡 Tip: Laat GPT zich verplaatsen in een rol: 'Je bent een recruiter die...'",
+            "💡 Tip: Voeg voorbeelddata toe in je prompt voor betere output",
+            "💡 Tip: Benoem wat je niet wilt: 'Vermijd overdreven technische termen'",
+            "💡 Tip: Gebruik tone of voice: 'Schrijf in een informele, enthousiaste stijl'",
+        ]
+        import random
+        self.prompt_tip_label.setText(random.choice(tips))
+        self.prompt_details_box.setPlainText(prompt.content)
+    
+        if persona:
+            self.details_box.setPlainText(
+                f"🔹 Naam: {persona.name}\n"
+                f"🔹 Categorie: {persona.category}\n"
+                f"🔹 Tags: {', '.join(persona.tags)}\n\n"
+                f"{persona.description}"
+            )
+    
+        self.prompt_metadata_label.setText(
+            f"<i>{prompt.title}</i> · Tags: {', '.join(prompt.tags)} · Laatst gebruikt: {prompt.last_used}"
+        )
 
 
     def refresh_persona_list(self):
@@ -647,7 +637,7 @@ class MainWindow(QMainWindow):
 
 
     def copy_prompt(self):
-        prompt_index = self.prompt_list.currentRow()
+        prompt_index = self.prompt_dashboard.get_selected_index()
         if prompt_index < 0:
             return
         item = self.prompt_list.item(prompt_index)
@@ -721,7 +711,7 @@ class MainWindow(QMainWindow):
             self.update_persona_title()
 
             self.details_box.clear()
-            self.prompt_list.clear()
+            self.prompt_dashboard.clear()
             self.prompt_details_box.clear()
             self.tag_panel.update_tags(self.personas, self.prompts)
 
@@ -730,7 +720,7 @@ class MainWindow(QMainWindow):
         query = query.lower().strip()
 
         self.persona_dashboard.list.clear()
-        self.prompt_list.clear()
+        self.prompt_dashboard.clear()
         self.details_box.clear()
         self.prompt_details_box.clear()
         self.update_persona_title()
@@ -923,7 +913,7 @@ class MainWindow(QMainWindow):
 
     def filter_by_tag(self, tag):
         self.persona_dashboard.list.clear()
-        self.prompt_list.clear()
+        self.prompt_dashboard.clear()
         self.details_box.clear()
         self.prompt_details_box.clear()
     
@@ -1202,55 +1192,6 @@ class MainWindow(QMainWindow):
         wizard = PromptWizardDialog(self)
         wizard.exec()    
         
-    def show_prompt_preview(self):
-        # Stap 1: Haal geselecteerde persona
-        index = self.persona_dashboard.list.currentRow()
-        if index < 0 or not hasattr(self, 'filtered_personas'):
-            QMessageBox.information(self, "Geen selectie", "Selecteer eerst een persona.")
-            return
-
-        persona = self.filtered_personas[index]
-
-        # Stap 2: Genereer prompt
-        from ui.prompt_generator import generate_prompt
-        generated = generate_prompt(persona)
-
-        # Stap 3: Toon in modale dialoog
-        dlg = QDialog(self)
-        dlg.setWindowTitle(f"🎛️ Gegenereerde Prompt voor {persona.name}")
-        dlg.setMinimumSize(700, 500)
-
-        layout = QVBoxLayout(dlg)
-
-        # Prompt Preview
-        preview = QTextEdit()
-        preview.setReadOnly(True)
-        preview.setText(generated)
-        preview.setStyleSheet("""
-            QTextEdit {
-                font-size: 14px;
-                background-color: #f9fafb;
-                border: 1px solid #e5e7eb;
-                border-radius: 8px;
-                padding: 12px;
-            }
-        """)
-        layout.addWidget(preview)
-
-        # Kopieerknop
-        copy_btn = QPushButton("📋 Kopieer prompt")
-        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(generated))
-        layout.addWidget(copy_btn)
-
-        # Sluitknop
-        close_btn = QPushButton("❌ Sluiten")
-        close_btn.clicked.connect(dlg.accept)
-        layout.addWidget(close_btn)
-
-        dlg.setLayout(layout)
-        dlg.exec()
-
-    
         
     def preview_generated_from_prompt(self):
         current_item = self.prompt_list.currentItem()
@@ -1290,3 +1231,12 @@ class MainWindow(QMainWindow):
 
         dlg.setLayout(layout)
         dlg.exec()
+        
+        
+    def refresh_prompt_list(self):
+        if hasattr(self, 'filtered_personas') and self.filtered_personas:
+            selected_index = self.persona_dashboard.list.currentRow()
+            if 0 <= selected_index < len(self.filtered_personas):
+                persona = self.filtered_personas[selected_index]
+                related_prompts = [p for p in self.prompts if p.persona_id == persona.id]
+                self.prompt_dashboard.refresh(related_prompts)

@@ -66,9 +66,12 @@ class PersonaDashboard(QWidget):
             return
 
         for index, persona in enumerate(self.personas):
+            def make_handler(i):
+                return lambda: self.persona_selected.emit(i)
+            
             card = PersonaCard(index, persona)
             card.setCursor(Qt.PointingHandCursor)
-            card.clicked.connect(self.persona_selected.emit)
+            card.clicked.connect(make_handler(index))
             card.toggled_favorite.connect(self.favorite_toggled.emit)
             self.scroll_layout.addWidget(card)
 
