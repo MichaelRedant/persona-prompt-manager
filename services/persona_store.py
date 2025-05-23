@@ -6,12 +6,22 @@ from models.persona import Persona
 
 
 class PersonaStore:
-    def __init__(self, filepath: str = "storage/db.json"):
-        self.filepath = filepath
+    def __init__(self, filepath: str = None):
+        if filepath is None:
+            # Pak absolute path vanuit bestandslocatie
+            base_dir = os.path.dirname(os.path.abspath(__file__))  # = /services
+            filepath = os.path.join(base_dir, "..", "storage", "db.json")
+
+        self.filepath = os.path.abspath(filepath)
 
     def load(self) -> list[Persona]:
+        print("🧭 CWD:", os.getcwd())
+        print("📁 Verwacht pad:", self.filepath)
+        print("📂 Bestaat bestand:", os.path.exists(self.filepath))
+
         if not os.path.exists(self.filepath):
             return []
+
 
         try:
             with open(self.filepath, "r", encoding="utf-8") as f:

@@ -19,6 +19,7 @@ from ui.prompt_preview_dialog import PromptPreviewDialog
 from ui.prompt_wizard import PromptWizardDialog
 from services.persona_store import PersonaStore
 from services.prompt_store import PromptStore
+from ui.persona_dashboard import PersonaDashboard
 
 
 
@@ -156,26 +157,8 @@ class MainWindow(QMainWindow):
         search_row.setSpacing(12)
         search_row.addWidget(self.search_toggle_button)
         search_row.addWidget(self.search_input)
-    
-        # Persona UI
-        self.persona_list = QListWidget()
-        self.no_personas_label = QLabel("Geen persona's gevonden.")
-        self.no_personas_label.setAlignment(Qt.AlignCenter)
-        self.no_personas_label.hide()
-        self.persona_title_label = QLabel("📚 Persona's")
-        self.persona_title_label.setStyleSheet("font-size: 14px; font-weight: 600; margin-bottom: 4px;")
-        persona_inner_layout = QVBoxLayout()
-        persona_inner_layout.addWidget(self.persona_title_label)
-        persona_inner_layout.addWidget(self.no_personas_label)
-        persona_inner_layout.addWidget(self.persona_list)
-        persona_card = QFrame()
-        persona_card.setLayout(persona_inner_layout)
-        persona_card.setStyleSheet("""
-            background-color: white;
-            border-radius: 12px;
-            border: 1px solid #e5e7eb;
-            padding: 12px;
-        """)
+   
+
     
         # Prompt UI
         self.prompt_list = QListWidget()
@@ -194,7 +177,11 @@ class MainWindow(QMainWindow):
     
         top_layout = QHBoxLayout()
         top_layout.setSpacing(12)
-        top_layout.addWidget(persona_card, 4)
+         
+        # Persona UI
+        self.persona_dashboard = PersonaDashboard(self)
+        top_layout.addWidget(self.persona_dashboard, 4)
+        
         top_layout.addWidget(prompt_card_container, 3)
         top_layout.addWidget(self.tag_panel, 2)
     
@@ -337,7 +324,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(scroll_area)
     
         # Events
-        self.persona_list.currentRowChanged.connect(self.display_persona_details)
+        self.persona_dashboard.persona_selected.connect(self.display_persona_details)
+        self.persona_dashboard.favorite_toggled.connect(self.toggle_favorite)
         self.prompt_list.itemSelectionChanged.connect(lambda: self.display_prompt_details(self.prompt_list.currentRow()))
         self.search_input.textChanged.connect(self.perform_search)
         self.add_prompt_button.clicked.connect(self.add_prompt)
@@ -348,7 +336,9 @@ class MainWindow(QMainWindow):
         self.edit_persona_button.clicked.connect(self.edit_persona)
         self.delete_persona_button.clicked.connect(self.delete_persona)
         self.favorite_button.clicked.connect(self.toggle_favorite)
-        self.persona_list.itemSelectionChanged.connect(self.check_selection_state)
+        self.persona_dashboard.persona_selected.connect(self.display_persona_details)
+        self.persona_dashboard.persona_selected.connect(self.check_selection_state)
+
         self.prompt_list.itemSelectionChanged.connect(self.check_selection_state)
     
         self.click_catcher = ClickCatcherFrame(self, self.clear_selections)
@@ -378,28 +368,31 @@ class MainWindow(QMainWindow):
 
 
     def load_data(self):
-           try:
-               self.personas = self.persona_store.load()
-           except Exception as e:
-               QMessageBox.critical(self, "Fout bij laden persona's", str(e))
-               self.personas = []
+        try:
+            self.personas = self.persona_store.load()
+            print(f"✅ Personas geladen: {[p.name for p in self.personas]}")
+        except Exception as e:
+            QMessageBox.critical(self, "Fout bij laden persona's", str(e))
+            self.personas = []
+            
+        self.filtered_personas = self.personas.copy()
+        try:
+            self.prompts = self.prompt_store.load()
+            print(f"✅ Prompts geladen: {[p.title for p in self.prompts]}")
+        except Exception as e:
+            QMessageBox.critical(self, "Fout bij laden prompts", str(e))
+            self.prompts = []
+            
+        
+        self.refresh_persona_list()
+        self.update_persona_title()
+        self.tag_panel.update_tags(self.personas, self.prompts)
+        self.update_status_chip()
+        self.update_moodchip_tooltip()
+        if hasattr(self, 'persona_dashboard'):
+            self.persona_dashboard.refresh(self.filtered_personas)
 
-           try:
-               self.prompts = self.prompt_store.load()
-           except Exception as e:
-               QMessageBox.critical(self, "Fout bij laden prompts", str(e))
-               self.prompts = []
 
-           self.refresh_persona_list()
-           self.update_persona_title()
-           self.tag_panel.update_tags(self.personas, self.prompts)
-           self.update_status_chip()
-           self.update_moodchip_tooltip()
-
-           # ⚙️ Selecteer eerste persona (indien aanwezig)
-           if self.persona_list.count() > 0:
-               self.persona_list.setCurrentRow(0)
-               self.display_persona_details(0)
 
 
     def load_personas(self):
@@ -417,8 +410,8 @@ class MainWindow(QMainWindow):
         self.update_moodchip_tooltip()
 
         # FIX: selecteer eerste persona om prompts te tonen
-        if self.persona_list.count() > 0:
-            self.persona_list.setCurrentRow(0)
+        if self.persona_dashboard.list.count() > 0:
+            self.persona_dashboard.list.setCurrentRow(0)
             self.display_persona_details(0)
 
 
@@ -432,27 +425,8 @@ class MainWindow(QMainWindow):
             
 
     def display_persona_details(self, index):
-        if index >= 0:
-            persona = self.filtered_personas[index] if hasattr(self, 'filtered_personas') else self.personas[index]
-            self.details_box.setPlainText(
-                f"🔹 Naam: {persona.name}\n"
-                f"🔹 Categorie: {persona.category}\n"
-                f"🔹 Tags: {', '.join(persona.tags)}\n\n"
-             f"{persona.description}"
-            )
-            self.edit_persona_button.show()
-            self.delete_persona_button.show()
-
-            self.prompt_list.clear()
-            related_prompts = [p for p in self.prompts if p.persona_id == persona.id]
-            for prompt in related_prompts:
-                item = QListWidgetItem(prompt.title)
-                item.setData(Qt.UserRole, prompt.id)  # Belangrijk!
-                self.prompt_list.addItem(item)
-
-            if self.prompt_list.count() > 0:
-                self.prompt_list.setCurrentRow(0)
-        else:
+        if not hasattr(self, 'filtered_personas') or index < 0 or index >= len(self.filtered_personas):
+            # ❌ Ongeldige index, toon leeg
             self.details_box.clear()
             self.prompt_list.clear()
             self.prompt_details_box.clear()
@@ -461,10 +435,33 @@ class MainWindow(QMainWindow):
             self.edit_prompt_button.hide()
             self.delete_prompt_button.hide()
             self.copy_prompt_button.hide()
-
             self.add_persona_button.show()
             self.add_prompt_button.show()
             self.favorite_button.show()
+            return
+
+        # ✅ Geldige index
+        persona = self.filtered_personas[index]
+        self.details_box.setPlainText(
+            f"🔹 Naam: {persona.name}\n"
+            f"🔹 Categorie: {persona.category}\n"
+            f"🔹 Tags: {', '.join(persona.tags)}\n\n"
+            f"{persona.description}"
+        )
+        self.edit_persona_button.show()
+        self.delete_persona_button.show()
+
+        self.prompt_list.clear()
+        related_prompts = [p for p in self.prompts if p.persona_id == persona.id]
+        for prompt in related_prompts:
+            item = QListWidgetItem(prompt.title)
+            item.setData(Qt.UserRole, prompt.id)
+            self.prompt_list.addItem(item)
+
+        if self.prompt_list.count() > 0:
+            self.prompt_list.setCurrentRow(0)
+            self.display_prompt_details(0)
+        
 
     def display_prompt_details(self, index):
         if index >= 0:
@@ -523,34 +520,29 @@ class MainWindow(QMainWindow):
 
 
     def refresh_persona_list(self):
-        self.persona_list.clear()
-        self.no_personas_label.setVisible(False)
-    
         self.filtered_personas = sorted(
             self.personas,
             key=lambda p: (not p.is_favorite, p.name.lower())
         )
-    
-        for persona in self.filtered_personas:
-            label = f"⭐ {persona.name}" if persona.is_favorite else f"☆ {persona.name}"
-            item = QListWidgetItem(label)
-            self.persona_list.addItem(item)
-    
-        self.no_personas_label.setVisible(len(self.filtered_personas) == 0)
-    
-        # 👇 Voeg dit toe om bij opstart automatisch de eerste te tonen
+
+        if hasattr(self, 'persona_dashboard'):
+            self.persona_dashboard.refresh(self.filtered_personas)
+
+        # Automatisch de eerste tonen (indien van toepassing)
         if self.filtered_personas:
-            self.persona_list.setCurrentRow(0)
             self.display_persona_details(0)
+
+    
+
 
 
 
 
     def add_prompt(self):
         selected_persona = None
-        persona_index = self.persona_list.currentRow()
+        persona_index = self.persona_dashboard.list.currentRow()
 
-        if 0 <= persona_index < self.persona_list.count():
+        if 0 <= persona_index < self.persona_dashboard.list.count():
             selected_persona = (
                 self.filtered_personas[persona_index]
                 if hasattr(self, 'filtered_personas') and self.filtered_personas
@@ -620,7 +612,7 @@ class MainWindow(QMainWindow):
             self.prompt_store.save(self.prompts)
 
 
-            self.display_persona_details(self.persona_list.currentRow())
+            self.display_persona_details(self.persona_dashboard.list.currentRow())
             self.tag_panel.update_tags(self.personas, self.prompts)
 
 
@@ -649,7 +641,7 @@ class MainWindow(QMainWindow):
 
             self.prompt_store.save(self.prompts)
 
-            self.display_persona_details(self.persona_list.currentRow())
+            self.display_persona_details(self.persona_dashboard.list.currentRow())
 
             self.tag_panel.update_tags(self.personas, self.prompts)
 
@@ -693,7 +685,7 @@ class MainWindow(QMainWindow):
 
 
     def edit_persona(self):
-        index = self.persona_list.currentRow()
+        index = self.persona_dashboard.list.currentRow()
         if index < 0:
             return
         persona = self.filtered_personas[index] if hasattr(self, 'filtered_personas') else self.personas[index]
@@ -706,12 +698,12 @@ class MainWindow(QMainWindow):
             self.update_status_chip()
             self.update_moodchip_tooltip()
             self.update_persona_title()
-            self.persona_list.setCurrentRow(index)
+            self.persona_dashboard.list.setCurrentRow(index)
             self.tag_panel.update_tags(self.personas, self.prompts)
 
 
     def delete_persona(self):
-        index = self.persona_list.currentRow()
+        index = self.persona_dashboard.list.currentRow()
         if index < 0:
             return
         persona = self.filtered_personas[index] if hasattr(self, 'filtered_personas') else self.personas[index]
@@ -737,7 +729,7 @@ class MainWindow(QMainWindow):
     def perform_search(self, query: str):
         query = query.lower().strip()
 
-        self.persona_list.clear()
+        self.persona_dashboard.list.clear()
         self.prompt_list.clear()
         self.details_box.clear()
         self.prompt_details_box.clear()
@@ -746,12 +738,6 @@ class MainWindow(QMainWindow):
         self.filtered_personas = []
         self.filtered_prompts = []
 
-        if not query:
-            self.filtered_personas = self.personas.copy()
-            for persona in self.filtered_personas:
-                self.persona_list.addItem(persona.name)
-            self.persona_list.setCurrentRow(0)
-            return
 
     # Zoek in persona's
         for persona in self.personas:
@@ -762,7 +748,6 @@ class MainWindow(QMainWindow):
             ]).lower()
 
             if query in persona_text:
-                self.persona_list.addItem(persona.name)
                 self.filtered_personas.append(persona)
                 self.no_personas_label.setVisible(len(self.filtered_personas) == 0)
 
@@ -795,24 +780,22 @@ class MainWindow(QMainWindow):
             "🧠 Gemaakt door Michaël Redant\nVersie 1.0\nPySide6 Applicatie"
         )
 
-    def check_selection_state(self):
-        if self.persona_list.currentRow() == -1 and self.prompt_list.currentRow() == -1:
+    def check_selection_state(self, index=None):
+        if index is None or index < 0:
             self.details_box.clear()
             self.prompt_details_box.clear()
-
             self.edit_persona_button.hide()
             self.delete_persona_button.hide()
             self.edit_prompt_button.hide()
             self.delete_prompt_button.hide()
             self.copy_prompt_button.hide()
-
             self.add_persona_button.show()
             self.add_prompt_button.show()
             self.favorite_button.hide()
 
 
     def clear_selections(self):
-        self.persona_list.clearSelection()
+        self.persona_dashboard.list.clearSelection()
         self.prompt_list.clearSelection()
         self.details_box.clear()
         self.prompt_details_box.clear()
@@ -836,22 +819,19 @@ class MainWindow(QMainWindow):
             self.search_input.clear()
             self.perform_search("")
 
-    def toggle_favorite(self):
-        index = self.persona_list.currentRow()
+    def toggle_favorite(self, index=None):
+        if index is None:
+            index = self.persona_dashboard.list.currentRow()
         if index < 0:
             return
-
         persona = self.filtered_personas[index]
         persona.is_favorite = not persona.is_favorite
-
-    # Opslaan
         self.persona_store.save(self.personas)
-
-
         self.refresh_persona_list()
+
         
     def toggle_favorite_by_click(self, item: QListWidgetItem):
-        index = self.persona_list.row(item)
+        index = self.persona_dashboard.list.row(item)
         if index < 0 or not hasattr(self, 'filtered_personas'):
             return
 
@@ -919,7 +899,9 @@ class MainWindow(QMainWindow):
     
     def update_persona_title(self):
         count = len(self.filtered_personas) if hasattr(self, 'filtered_personas') else len(self.personas)
-        self.persona_title_label.setText(f"📚 Persona's {count}")
+        if hasattr(self.persona_dashboard, "title"):
+           self.persona_dashboard.title.setText(f"📊 Persona Dashboard ({count})")
+
             
     def add_blank_persona(self):
         from ui.persona_form import PersonaForm
@@ -940,7 +922,7 @@ class MainWindow(QMainWindow):
             self.refresh_persona_list()
 
     def filter_by_tag(self, tag):
-        self.persona_list.clear()
+        self.persona_dashboard.list.clear()
         self.prompt_list.clear()
         self.details_box.clear()
         self.prompt_details_box.clear()
@@ -952,7 +934,6 @@ class MainWindow(QMainWindow):
     
         for persona in self.filtered_personas:
             item = QListWidgetItem(persona.name)
-            self.persona_list.addItem(item)
     
         filtered_prompts = self.prompts if not tag else [p for p in self.prompts if tag in p.tags]
         for prompt in filtered_prompts:
@@ -1223,7 +1204,7 @@ class MainWindow(QMainWindow):
         
     def show_prompt_preview(self):
         # Stap 1: Haal geselecteerde persona
-        index = self.persona_list.currentRow()
+        index = self.persona_dashboard.list.currentRow()
         if index < 0 or not hasattr(self, 'filtered_personas'):
             QMessageBox.information(self, "Geen selectie", "Selecteer eerst een persona.")
             return
