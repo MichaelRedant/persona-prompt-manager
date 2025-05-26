@@ -1,12 +1,9 @@
-# ui/prompt_dashboard.py
-
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QScrollArea, QFrame
+    QWidget, QVBoxLayout, QLabel, QScrollArea
 )
 from PySide6.QtCore import Qt, Signal
 from ui.prompt_card import PromptCard
 from models.prompt import Prompt
-
 
 class PromptDashboard(QWidget):
     prompt_selected = Signal(int)
@@ -14,6 +11,7 @@ class PromptDashboard(QWidget):
     def __init__(self, parent=None, prompts=None):
         super().__init__(parent)
         self.prompts = prompts or []
+        self._selected_index = -1
 
         self.setObjectName("promptDashboard")
         self.setStyleSheet("""
@@ -48,32 +46,44 @@ class PromptDashboard(QWidget):
         self.refresh(self.prompts)
 
     def refresh(self, prompts):
-        self.clear()
+        # Vorige widgets verwijderen
+        for i in reversed(range(self.scroll_layout.count())):
+            widget = self.scroll_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+
         self.prompts = prompts or []
-    
+
         if not self.prompts:
-            return  # << GEEN tijdelijke QLabel toevoegen
-    
+            empty_label = QLabel("Geen prompts beschikbaar.")
+            empty_label.setAlignment(Qt.AlignCenter)
+            self.scroll_layout.addWidget(empty_label)
+            return
+
         for index, prompt in enumerate(self.prompts):
-            card = PromptCard(index, prompt, self)
-            card.clicked.connect(lambda idx=index: self.prompt_selected.emit(idx))
-            card.toggled_favorite.connect(lambda idx=index: self.toggled_favorite.emit(idx))
+            card = PromptCard(index, prompt, parent=self.container)
+            card.setCursor(Qt.PointingHandCursor)
+
+            card.clicked.connect(lambda _, i=index: self.prompt_selected.emit(i))
+
             self.scroll_layout.addWidget(card)
-    
+
         self.scroll_layout.addStretch()
 
+    def get_selected_index(self):
+        return self._selected_index
 
     def clear(self):
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
             widget = item.widget()
-            if widget is not None:
+            if widget:
                 widget.setParent(None)
-
 
     def load_prompts(self, prompts):
         self.refresh(prompts)
 
     def select_first(self):
         if self.prompts:
+            self._selected_index = 0
             self.prompt_selected.emit(0)

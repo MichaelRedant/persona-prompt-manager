@@ -12,6 +12,8 @@ import uuid
 class PromptForm(QDialog):
     def __init__(self, parent=None, prompt=None, personas=None, preselected_persona=None):
         super().__init__(parent)
+        print("🚨 PromptForm geopend!")
+
         self.setWindowTitle("📝 Prompt toevoegen of bewerken")
         self.setMinimumSize(800, 600)
         self.setStyleSheet("""

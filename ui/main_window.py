@@ -47,6 +47,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Persona Vault")
         self.setGeometry(100, 100, 1100, 800)
         self.is_dark_mode = False
+
     
         # Tray
         self.tray_icon = QSystemTrayIcon(QIcon(icon_path), self)
@@ -565,19 +566,13 @@ class MainWindow(QMainWindow):
 
 
     def edit_prompt(self):
-        current_item = self.prompt_list.currentItem()
-        if not current_item:
+        index = self.prompt_dashboard.get_selected_index()
+        if index < 0 or index >= len(self.filtered_prompts):
             QMessageBox.information(self, "Selectie vereist", "Selecteer een prompt om te bewerken.")
             return
 
-        prompt_id = current_item.data(Qt.UserRole)
-        selected_prompt = next((p for p in self.prompts if p.id == prompt_id), None)
+        selected_prompt = self.filtered_prompts[index]
 
-        if not selected_prompt:
-            QMessageBox.warning(self, "Ongeldig", "Kon de geselecteerde prompt niet vinden.")
-            return
-
-        # Zoek bijhorende persona
         selected_persona = next((p for p in self.personas if p.id == selected_prompt.persona_id), None)
 
         dialog = PromptForm(
@@ -592,33 +587,25 @@ class MainWindow(QMainWindow):
             if not updated_prompt:
                 return
 
-            # ✅ Vervang de oude prompt door de nieuwe
             for i, p in enumerate(self.prompts):
                 if p.id == updated_prompt.id:
                     self.prompts[i] = updated_prompt
                     break
 
-            # ✅ Schrijf weg
             self.prompt_store.save(self.prompts)
-
-
             self.display_persona_details(self.persona_dashboard.list.currentRow())
             self.tag_panel.update_tags(self.personas, self.prompts)
 
 
 
+
     def delete_prompt(self):
-        current_item = self.prompt_list.currentItem()
-        if not current_item:
+        index = self.prompt_dashboard.get_selected_index()
+        if index < 0 or index >= len(self.filtered_prompts):
             QMessageBox.information(self, "Selectie vereist", "Selecteer een prompt om te verwijderen.")
             return
 
-        prompt_id = current_item.data(Qt.UserRole)
-        selected_prompt = next((p for p in self.prompts if p.id == prompt_id), None)
-
-        if not selected_prompt:
-            QMessageBox.warning(self, "Niet gevonden", "Geselecteerde prompt kon niet worden gevonden.")
-            return
+        selected_prompt = self.filtered_prompts[index]
 
         confirm = QMessageBox.question(
             self,
@@ -628,30 +615,27 @@ class MainWindow(QMainWindow):
 
         if confirm == QMessageBox.StandardButton.Yes:
             self.prompts = [p for p in self.prompts if p.id != selected_prompt.id]
-
             self.prompt_store.save(self.prompts)
-
             self.display_persona_details(self.persona_dashboard.list.currentRow())
-
             self.tag_panel.update_tags(self.personas, self.prompts)
+
 
 
     def copy_prompt(self):
         prompt_index = self.prompt_dashboard.get_selected_index()
-        if prompt_index < 0:
+        if prompt_index < 0 or prompt_index >= len(self.filtered_prompts):
             return
-        item = self.prompt_list.item(prompt_index)
-        prompt_id = item.data(Qt.UserRole)
-        prompt = next((p for p in self.prompts if p.id == prompt_id), None)
-        if prompt:
-            full_text = f"{prompt.title}\n\n{prompt.content}"
-            QApplication.clipboard().setText(full_text)
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Gekopieerd")
-            msg.setText("✅ Prompt gekopieerd naar klembord.")
-            msg.setIcon(QMessageBox.Information)
-            msg.setStandardButtons(QMessageBox.Ok)
-            msg.exec()
+
+        prompt = self.filtered_prompts[prompt_index]
+        full_text = f"{prompt.title}\n\n{prompt.content}"
+        QApplication.clipboard().setText(full_text)
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Gekopieerd")
+        msg.setText("✅ Prompt gekopieerd naar klembord.")
+        msg.setIcon(QMessageBox.Information)
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec()
+
 
     def add_persona(self):
         dialog = PersonaChoiceDialog(self)
@@ -932,14 +916,12 @@ class MainWindow(QMainWindow):
             self.prompt_list.addItem(item)
 
     def try_prompt_in_chatgpt(self):
-        prompt_index = self.prompt_list.currentRow()
-        if prompt_index < 0:
+        index = self.prompt_dashboard.get_selected_index()
+        if index < 0 or index >= len(self.filtered_prompts):
             QMessageBox.information(self, "Geen prompt geselecteerd", "Selecteer een prompt om te testen.")
             return
 
-        item = self.prompt_list.item(prompt_index)
-        prompt_id = item.data(Qt.UserRole)
-        prompt = next((p for p in self.prompts if p.id == prompt_id), None)
+        prompt = self.filtered_prompts[index]
 
         if not prompt:
             QMessageBox.warning(self, "Prompt niet gevonden", "De geselecteerde prompt kon niet worden geladen.")
@@ -948,6 +930,7 @@ class MainWindow(QMainWindow):
         encoded_prompt = urllib.parse.quote(prompt.content)
         url = f"https://chat.openai.com/?prompt={encoded_prompt}"
         webbrowser.open(url)
+
 
 
     def wrap_in_card(self, widget: QWidget, title: str = None) -> QFrame:
@@ -1194,45 +1177,9 @@ class MainWindow(QMainWindow):
         
         
     def preview_generated_from_prompt(self):
-        current_item = self.prompt_list.currentItem()
-        if not current_item:
-            QMessageBox.information(self, "Selecteer een prompt", "Selecteer een prompt om de gegenereerde versie te bekijken.")
-            return
+        print("⚠️ preview_generated_from_prompt werd aangeroepen maar is tijdelijk uitgeschakeld.")
+        return
 
-        prompt_id = current_item.data(Qt.UserRole)
-        prompt = next((p for p in self.prompts if p.id == prompt_id), None)
-        if not prompt:
-            QMessageBox.warning(self, "Fout", "Kon de prompt niet laden.")
-            return
-
-        # Bijhorende persona zoeken
-        persona = next((p for p in self.personas if p.id == prompt.persona_id), None)
-        if not persona:
-            QMessageBox.warning(self, "Geen persona", "Deze prompt is niet gekoppeld aan een geldige persona.")
-            return
-
-        # Prompt genereren
-        generated = generate_prompt(persona)
-
-        # Toon in dialoog
-        dlg = QDialog(self)
-        dlg.setWindowTitle("🎛️ Gegenereerde Prompt")
-        dlg.setMinimumSize(700, 500)
-        layout = QVBoxLayout()
-        text = QTextEdit()
-        text.setReadOnly(True)
-        text.setText(generated)
-        layout.addWidget(text)
-
-        # Knop om te kopiëren
-        copy_btn = QPushButton("📋 Kopieer naar klembord")
-        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(generated))
-        layout.addWidget(copy_btn)
-
-        dlg.setLayout(layout)
-        dlg.exec()
-        
-        
     def refresh_prompt_list(self):
         if hasattr(self, 'filtered_personas') and self.filtered_personas:
             selected_index = self.persona_dashboard.list.currentRow()
@@ -1240,3 +1187,4 @@ class MainWindow(QMainWindow):
                 persona = self.filtered_personas[selected_index]
                 related_prompts = [p for p in self.prompts if p.persona_id == persona.id]
                 self.prompt_dashboard.refresh(related_prompts)
+                self.filtered_prompts = related_prompts  # belangrijk voor detailweergave

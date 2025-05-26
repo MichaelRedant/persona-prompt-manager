@@ -11,7 +11,8 @@ class PromptCard(QFrame):
     toggled_favorite = Signal(int)
 
     def __init__(self, index: int, prompt, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # ✅ gebruik altijd parent hier
+
         self.index = index
         self.prompt = prompt
 
@@ -59,5 +60,6 @@ class PromptCard(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
+            print("📦 PromptCard geklikt!", self.prompt.title)
             self.clicked.emit(self.index)
-            event.accept()  # voorkom verdere eventbubbling
+            event.accept()
