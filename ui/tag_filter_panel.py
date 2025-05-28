@@ -1,46 +1,46 @@
 from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QPushButton, QSizePolicy
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from collections import defaultdict
 
 class TagFilterPanel(QGroupBox):
-    def __init__(self, parent=None, tag_clicked_callback=None):
+    tag_clicked = Signal(object)
+
+    def __init__(self, parent=None):
         super(TagFilterPanel, self).__init__("📑 Tags", parent)
 
         self.setStyleSheet("""
-    QGroupBox {
-        font-size: 15px;
-        font-weight: bold;
-        padding: 8px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        background-color: transparent;
-    }
-    QPushButton {
-        background-color: #e0e7ff;
-        color: #1e3a8a;
-        border: none;
-        border-radius: 6px;
-        padding: 6px 10px;
-        margin: 3px;
-        font-size: 13px;
-    }
-    QPushButton:hover {
-        background-color: #dbeafe;
-    }
-    QPushButton[selected="true"] {
-        background-color: #4338ca;
-        color: white;
-        font-weight: bold;
-    }
-""")
-
+            QGroupBox {
+                font-size: 15px;
+                font-weight: bold;
+                padding: 8px;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                background-color: transparent;
+            }
+            QPushButton {
+                background-color: #e0e7ff;
+                color: #1e3a8a;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 10px;
+                margin: 3px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #dbeafe;
+            }
+            QPushButton[selected="true"] {
+                background-color: #4338ca;
+                color: white;
+                font-weight: bold;
+            }
+        """)
 
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.setMinimumWidth(160)
 
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
-        self.tag_clicked_callback = tag_clicked_callback
 
         self.active_tag = None
         self.tag_buttons = {}
@@ -91,14 +91,12 @@ class TagFilterPanel(QGroupBox):
             self.clear_filter()
         else:
             self.active_tag = tag
-            if self.tag_clicked_callback:
-                self.tag_clicked_callback(tag)
+            self.tag_clicked.emit(tag)
             self.refresh_selection_state()
 
     def clear_filter(self):
         self.active_tag = None
-        if self.tag_clicked_callback:
-            self.tag_clicked_callback(None)
+        self.tag_clicked.emit(None)
         self.refresh_selection_state()
 
     def refresh_selection_state(self):

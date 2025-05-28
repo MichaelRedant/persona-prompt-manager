@@ -8,11 +8,14 @@ from ui.splash_screen import SplashScreen
 
 icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets", "icon.ico"))
 
+splash = None  # ⬅️ Globale placeholder
+
 def start_main():
     global window
     window = MainWindow()
     window.show()
-    splash.finish(window)
+    if splash:
+        splash.finish(window)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
