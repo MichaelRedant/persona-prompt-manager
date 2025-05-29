@@ -48,6 +48,12 @@ class PersonaDashboard(QWidget):
         self.scroll_layout.setSpacing(12)
         self.scroll.setWidget(self.container)
 
+        self.no_personas_label = QLabel("Geen persona's gevonden.")
+        self.no_personas_label.setAlignment(Qt.AlignCenter)
+        self.no_personas_label.setStyleSheet("color: #777; font-style: italic;")
+        self.no_personas_label.setVisible(False)
+        self.scroll_layout.addWidget(self.no_personas_label)
+
         self.refresh(self.personas)
 
     def refresh(self, personas):
@@ -74,3 +80,11 @@ class PersonaDashboard(QWidget):
             self.scroll_layout.addWidget(card)
 
         self.scroll_layout.addStretch()
+
+    def clear_personas(self):
+        while self.scroll_layout.count():
+            item = self.scroll_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()

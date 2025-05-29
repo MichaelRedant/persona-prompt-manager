@@ -1,5 +1,7 @@
 from PySide6.QtWidgets import QListWidgetItem
 from PySide6.QtCore import Qt
+from ui.persona_card import PersonaCard
+
 from logic.helpers import (
     find_persona_by_id,
     find_prompt_by_id,
@@ -11,13 +13,14 @@ import random
 def display_persona_details(self, index):
    print("✅ display_persona_details werd uitgevoerd met index:", index)
    self.selected_persona_index = index
-   # 👁️ Knoppen altijd tonen
+   # 👁️ Knoppen tonen
    self.add_persona_button.show()
    self.edit_persona_button.show()
    self.delete_persona_button.show()
    self.favorite_button.show()
    self.add_prompt_button.show()
    if not hasattr(self, 'filtered_personas') or index < 0 or index >= len(self.filtered_personas):
+       print("⚠️ Ongeldige index of geen personas")  # extra debug
        self.details_box.clear()
        self.prompt_list.clear()
        self.prompt_details_box.clear()
@@ -90,63 +93,78 @@ def refresh_persona_list(self):
         self.display_persona_details(0)
         
 def perform_search(self, query: str):
-        query = query.lower().strip()
+    query = query.lower().strip()
 
-        self.persona_dashboard.list.clear()
-        self.prompt_list.clear()
-        self.details_box.clear()
-        self.prompt_details_box.clear()
-        self.update_persona_title()
+    # Reset UI
+    self.persona_dashboard.clear_personas()
+    self.prompt_list.clear()
+    self.details_box.clear()
+    self.prompt_details_box.clear()
+    self.update_persona_title()
 
-        self.filtered_personas = []
-        self.filtered_prompts = []
+    self.filtered_personas = []
+    self.filtered_prompts = []
 
+    # === Zoek in persona's ===
+    for persona in self.personas:
+        persona_text = " ".join([
+            persona.name,
+            persona.category,
+            " ".join(persona.tags)
+        ]).lower()
 
-    # Zoek in persona's
-        for persona in self.personas:
-            persona_text = " ".join([
-                persona.name,
-                persona.category,
-                " ".join(persona.tags)
-            ]).lower()
+        if query in persona_text:
+            self.filtered_personas.append(persona)
 
-            if query in persona_text:
-                self.filtered_personas.append(persona)
-                self.no_personas_label.setVisible(len(self.filtered_personas) == 0)
+    # Toon persona-cards als er resultaten zijn
+    if self.filtered_personas:
+        self.persona_dashboard.no_personas_label.setVisible(False)
 
-    # Zoek in prompts
-        for prompt in self.prompts:
-            prompt_text = " ".join([
-                prompt.title,
-                prompt.content,
-                " ".join(prompt.tags)
-            ]).lower()
+        for index, persona in enumerate(self.filtered_personas):
+            card = PersonaCard(index=index, persona=persona)
+            # Verbind eventueel de signalen als je acties wil bij klik of favoriet
+            card.clicked.connect(self.display_persona_details)
+            card.toggled_favorite.connect(self.toggle_favorite_by_click)
+            self.persona_dashboard.scroll_layout.addWidget(card)
 
-            if query in prompt_text:
-                self.filtered_prompts.append(prompt)
-                item = QListWidgetItem(prompt.title)
-                item.setData(Qt.UserRole, prompt.id)
-                self.prompt_list.addItem(item)
-                self.no_prompts_label.setVisible(self.prompt_list.count() == 0)
+    else:
+        self.persona_dashboard.no_personas_label.setVisible(True)
 
 
-    # Toon eerste prompt detail als er match is
-        if self.prompt_list.count() > 0:
-            self.prompt_list.setCurrentRow(0)
-            self.no_prompts_label.setVisible(self.prompt_list.count() == 0)
-            
-def check_selection_state(self, index=None):
-        if index is None or index < 0:
-            self.details_box.clear()
-            self.prompt_details_box.clear()
-            self.edit_persona_button.hide()
-            self.delete_persona_button.hide()
-            self.edit_prompt_button.hide()
-            self.delete_prompt_button.hide()
-            self.copy_prompt_button.hide()
-            self.add_persona_button.show()
-            self.add_prompt_button.show()
-            self.favorite_button.hide()
+    # === Zoek in prompts ===
+    for prompt in self.prompts:
+        prompt_text = " ".join([
+            prompt.title,
+            prompt.content,
+            " ".join(prompt.tags)
+        ]).lower()
+
+        if query in prompt_text:
+            self.filtered_prompts.append(prompt)
+            item = QListWidgetItem(prompt.title)
+            item.setData(Qt.UserRole, prompt.id)
+            self.prompt_list.addItem(item)
+
+    # Toon/verberg "geen prompts"-label
+    has_prompts = self.prompt_list.count() > 0
+    self.no_prompts_label.setVisible(not has_prompts)
+
+    # Selecteer en toon eerste prompt
+    if has_prompts:
+        self.prompt_list.setCurrentRow(0)
+
+def check_prompt_selection(self):
+    index = self.prompt_list.currentRow()
+    if index is None or index < 0:
+        self.edit_prompt_button.hide()
+        self.delete_prompt_button.hide()
+        self.copy_prompt_button.hide()
+    else:
+        self.edit_prompt_button.show()
+        self.delete_prompt_button.show()
+        self.copy_prompt_button.show()
+
+
 
 
 def clear_selections(self):

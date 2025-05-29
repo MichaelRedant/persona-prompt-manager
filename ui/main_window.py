@@ -92,12 +92,11 @@ class MainWindow(QMainWindow):
         self.edit_persona_button.clicked.connect(self.edit_persona)
         self.delete_persona_button.clicked.connect(self.delete_persona)
         self.favorite_button.clicked.connect(self.toggle_favorite)
-        self.persona_dashboard.persona_selected.connect(self.check_selection_state)
+
+
         
 
-        self.prompt_list.itemSelectionChanged.connect(self.check_selection_state)
-
-
+        self.prompt_list.itemSelectionChanged.connect(self.check_prompt_selection)
         self.click_catcher = ClickCatcherFrame(self, self.clear_selections)
         self.click_catcher.setGeometry(self.rect())
         self.click_catcher.raise_()

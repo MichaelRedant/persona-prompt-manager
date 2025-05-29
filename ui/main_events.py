@@ -15,9 +15,10 @@ from ui.main_logic import (
     display_prompt_details,
     refresh_persona_list,
     perform_search,
-    check_selection_state,
+    check_prompt_selection,
     clear_selections
 )
+from ui.persona_card import PersonaCard
 
 def add_persona(self):
         dialog = PersonaChoiceDialog(self)
@@ -231,24 +232,28 @@ def copy_prompt(self):
         msg.exec()
 
 def filter_by_tag(self, tag):
-        self.persona_dashboard.list.clear()
-        self.prompt_list.clear()
-        self.details_box.clear()
-        self.prompt_details_box.clear()
-    
-        if not tag:
-            self.filtered_personas = self.personas.copy()
-        else:
-            self.filtered_personas = [p for p in self.personas if tag in p.tags]
-    
-        for persona in self.filtered_personas:
-            item = QListWidgetItem(persona.name)
-    
-        filtered_prompts = self.prompts if not tag else [p for p in self.prompts if tag in p.tags]
-        for prompt in filtered_prompts:
-            item = QListWidgetItem(prompt.title)
-            item.setData(Qt.UserRole, prompt.id)
-            self.prompt_list.addItem(item)
+    self.persona_dashboard.clear_personas()
+    self.prompt_list.clear()
+    self.details_box.clear()
+    self.prompt_details_box.clear()
+
+    if not tag:
+        self.filtered_personas = self.personas.copy()
+    else:
+        self.filtered_personas = [p for p in self.personas if tag in p.tags]
+
+    for index, persona in enumerate(self.filtered_personas):
+        card = PersonaCard(index=index, persona=persona)
+        card.clicked.connect(self.display_persona_details)
+        card.toggled_favorite.connect(self.toggle_favorite_by_click)
+        self.persona_dashboard.scroll_layout.addWidget(card)
+
+    # Filter prompts ook
+    filtered_prompts = self.prompts if not tag else [p for p in self.prompts if tag in p.tags]
+    for prompt in filtered_prompts:
+        item = QListWidgetItem(prompt.title)
+        item.setData(Qt.UserRole, prompt.id)
+        self.prompt_list.addItem(item)
 
 def try_prompt_in_chatgpt(self):
     prompt_index = self.prompt_list.currentRow()
@@ -473,5 +478,5 @@ def bind_event_handlers(main):
     main.display_prompt_details = display_prompt_details.__get__(main)
     main.refresh_persona_list = refresh_persona_list.__get__(main)
     main.perform_search = perform_search.__get__(main)
-    main.check_selection_state = check_selection_state.__get__(main)
     main.clear_selections = clear_selections.__get__(main)
+    main.check_prompt_selection = check_prompt_selection.__get__(main)
