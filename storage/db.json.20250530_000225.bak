@@ -21,14 +21,6 @@
       "backend",
       "api"
     ],
-    "is_favorite": false
-  },
-  {
-    "id": "b8f1927a-e835-47f7-811b-5d6a3f197fbc",
-    "name": "Senior Project Manager",
-    "category": "Project Management",
-    "description": "Een resultaatgerichte en gestructureerde Senior Project Manager met uitgebreide ervaring in het plannen, coördineren en opleveren van complexe projecten.",
-    "tags": [],
-    "is_favorite": false
+    "is_favorite": true
   }
 ]

@@ -1,11 +1,8 @@
-# ui/persona_dashboard.py
-
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QScrollArea, QFrame
+    QWidget, QVBoxLayout, QLabel, QScrollArea, QSpacerItem, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
 from ui.persona_card import PersonaCard
-
 
 class PersonaDashboard(QWidget):
     persona_selected = Signal(int)
@@ -45,8 +42,10 @@ class PersonaDashboard(QWidget):
         self.container = QWidget()
         self.scroll_layout = QVBoxLayout(self.container)
         self.scroll_layout.setContentsMargins(12, 6, 12, 12)
+        self.scroll_layout.setAlignment(Qt.AlignTop)
         self.scroll_layout.setSpacing(12)
         self.scroll.setWidget(self.container)
+        self.scroll.setMaximumHeight(400)
 
         self.no_personas_label = QLabel("Geen persona's gevonden.")
         self.no_personas_label.setAlignment(Qt.AlignCenter)
@@ -57,34 +56,44 @@ class PersonaDashboard(QWidget):
         self.refresh(self.personas)
 
     def refresh(self, personas):
-        # Oude widgets verwijderen
-        for i in reversed(range(self.scroll_layout.count())):
-            widget = self.scroll_layout.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
-
+        self.clear_personas()
         self.personas = personas or []
 
         if not self.personas:
-            empty_label = QLabel("Geen persona's beschikbaar.")
-            empty_label.setAlignment(Qt.AlignCenter)
-            self.scroll_layout.addWidget(empty_label)
+            self.no_personas_label.setVisible(True)
             return
+        else:
+            self.no_personas_label.setVisible(False)
 
         for index, persona in enumerate(self.personas):
             card = PersonaCard(index, persona)
             card.setCursor(Qt.PointingHandCursor)
+
+            # Emit de index naar buiten bij klik op de kaart
             card.clicked.connect(lambda checked=False, i=index: self.persona_selected.emit(i))
 
-            card.toggled_favorite.connect(self.favorite_toggled.emit)
+            # Favoriet toggle en ster visueel updaten
+            card.toggled_favorite.connect(lambda i=index, c=card: self._handle_favorite_toggle(i, c))
+
+            card.update_ui()
             self.scroll_layout.addWidget(card)
 
-        self.scroll_layout.addStretch()
+        # Enkel als er effectief iets werd toegevoegd
+        if self.scroll_layout.count() > 1:
+            spacer = QSpacerItem(0, 24, QSizePolicy.Minimum, QSizePolicy.Fixed)
+            self.scroll_layout.addItem(spacer)
+
+    def _handle_favorite_toggle(self, index, card):
+        self.favorite_toggled.emit(index)  # Laat main logic dit opslaan
+        card.persona.is_favorite = not card.persona.is_favorite  # Toggle lokale status
+        card.update_ui()  # Ster bijwerken
 
     def clear_personas(self):
-        while self.scroll_layout.count():
-            item = self.scroll_layout.takeAt(0)
+        for i in reversed(range(self.scroll_layout.count())):
+            item = self.scroll_layout.itemAt(i)
             widget = item.widget()
-            if widget is not None:
+            if widget and widget != self.no_personas_label:
                 widget.setParent(None)
                 widget.deleteLater()
+            elif not widget:
+                self.scroll_layout.removeItem(item)

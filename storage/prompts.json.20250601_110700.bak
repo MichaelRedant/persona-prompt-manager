@@ -1,0 +1,26 @@
+[
+  {
+    "id": "f74b1d72-378c-4820-aafb-9149f7e9f301",
+    "persona_id": "3f1a8570-8a7a-4df6-a1c3-e804d1f7b301",
+    "title": "Calibreer 3D printer instellingen",
+    "content": "Je bent een ervaren 3D print engineer. Leg stap voor stap uit hoe je een FDM-printer kalibreert voor PETGOO",
+    "tags": [
+      "PETG",
+      "calibratie",
+      "3D print"
+    ],
+    "last_used": ""
+  },
+  {
+    "id": "c93e1424-42a7-463e-bfd1-4e829d248c61",
+    "persona_id": "e2a45690-b9fa-4d66-bbb8-72c6c1e3a5a1",
+    "title": "Python API genereren",
+    "content": "Je bent een senior Python backend developer. Schrijf een FastAPI endpoint voor een product catalogus en snello",
+    "tags": [
+      "fastapi",
+      "backend",
+      "json"
+    ],
+    "last_used": ""
+  }
+]
